@@ -1,11 +1,20 @@
-use std::any::{Any, TypeId};
+#![feature(get_type_id)]
+
+#[macro_use]
+extern crate mopa;
+
+use std::any::TypeId;
 use std::collections::HashMap;
+
+use mopa::Any;
 
 struct Handler {
 
 }
 
-trait Event {}
+trait Event: Any {}
+
+mopafy!(Event);
 
 struct Registry {
     events: HashMap<TypeId, Handler>,
@@ -17,9 +26,24 @@ impl Registry {
     }
 }
 
+struct Context {
+
+}
+
+impl Context {
+    fn new(event: Box<Event>) -> Context {
+        Context {  }
+    }
+}
+
 impl Registry {
     fn register_event<T: ?Sized + Any>(&mut self, handler: Handler) {
         self.events.insert(TypeId::of::<T>(), handler);
+    }
+
+    fn call(&self, event: Box<Event>) {
+        let handler = self.events.get(&event.get_type_id());
+        let context = Context::new(event);
     }
 }
 

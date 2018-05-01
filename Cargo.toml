@@ -5,3 +5,4 @@ authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
 
 [dependencies]
 futures = "0.1"
+mopa = "0.2"
