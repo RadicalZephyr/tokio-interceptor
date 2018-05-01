@@ -8,56 +8,55 @@ use std::collections::HashMap;
 
 use mopa::Any;
 
-struct Handler {
+macro_rules! with_any_map {
+    ($trait_:ident, $mapname:ident) => {
+        pub struct $mapname(HashMap<TypeId, Box<$trait_>>);
 
+        impl $mapname {
+            pub fn new() -> $mapname {
+                $mapname(HashMap::new())
+            }
+
+            pub fn get<'a, T: 'static + $trait_>(&'a self) -> Option<&'a T> {
+                self.0.get(&TypeId::of::<T>()).and_then(|any| any.downcast_ref::<T>())
+            }
+
+            pub fn insert<T: 'static + $trait_>(&mut self, value: T) {
+                self.0.insert(TypeId::of::<T>(), Box::new(value));
+            }
+        }
+    }
 }
 
-trait Event: Any {}
+pub trait Coeffect: Any {}
+mopafy!(Coeffect);
+with_any_map!(Coeffect, CoeffectMap);
 
+pub trait Effect: Any {}
+mopafy!(Effect);
+with_any_map!(Effect, EffectMap);
+
+pub trait Event: Any {
+    fn handle(&self);
+}
 mopafy!(Event);
-
-struct Registry {
-    events: HashMap<TypeId, Handler>,
-}
-
-impl Registry {
-    fn new() -> Registry {
-        Registry { events: HashMap::new() }
-    }
-}
-
-struct Context {
-
-}
-
-impl Context {
-    fn new(event: Box<Event>) -> Context {
-        Context {  }
-    }
-}
-
-impl Registry {
-    fn register_event<T: ?Sized + Any>(&mut self, handler: Handler) {
-        self.events.insert(TypeId::of::<T>(), handler);
-    }
-
-    fn call(&self, event: Box<Event>) {
-        let handler = self.events.get(&event.get_type_id());
-        let context = Context::new(event);
-    }
-}
+with_any_map!(Event, EventMap);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    struct FooEvent(u8);
+    #[derive(Debug,PartialEq)]
+    struct Test(u8);
 
-    impl Event for FooEvent {}
+    impl Coeffect for Test {
+
+    }
 
     #[test]
-    fn it_works() {
-        let mut r = Registry::new();
-        r.register_event::<FooEvent>(Handler {});
+    fn test_coeffect_map() {
+        let mut cmap = CoeffectMap::new();
+        cmap.insert(Test(1));
+        assert_eq!(Some(&Test(1)), cmap.get::<Test>())
     }
 }
