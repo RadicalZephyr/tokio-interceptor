@@ -81,13 +81,17 @@ impl<E> Context<E> {
 }
 
 pub trait Interceptor {
-    type Error;
+    type Error: 'static;
 
     fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                  Error = Self::Error>>;
+                                                                  Error = Self::Error>> {
+        Box::new(future::ok(context))
+    }
 
     fn after(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                 Error = Self::Error>>;
+                                                                 Error = Self::Error>> {
+        Box::new(future::ok(context))
+    }
 }
 
 #[derive(Default)]
@@ -111,11 +115,6 @@ where C: Coeffect,
         context.coeffects.insert(C::get());
         Box::new(future::ok(context))
     }
-
-    fn after(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                 Error = Self::Error>> {
-        Box::new(future::ok(context))
-    }
 }
 
 pub struct HandleEffects<E>(PhantomData<E>);
@@ -131,11 +130,6 @@ impl<E> Interceptor for HandleEffects<E>
 where E: 'static,
 {
     type Error = E;
-
-    fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                      Error = Self::Error>> {
-        Box::new(future::ok(context))
-    }
 
     fn after(&self, mut context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
                                                                  Error = Self::Error>> {
