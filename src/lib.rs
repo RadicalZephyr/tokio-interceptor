@@ -55,11 +55,9 @@ pub trait Effect: Any {
 mopafy!(Effect);
 with_any_map!(Effect, EffectMap);
 
-pub trait Event: Any {
-    fn handle(&self);
+pub trait Event<E> {
+    fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
 }
-mopafy!(Event);
-with_any_map!(Event, EventMap);
 
 #[derive(Default)]
 pub struct Context<E> {
@@ -160,11 +158,45 @@ where S: 'static,
     }
 }
 
-impl<T> Coeffect for T
-where T: 'static + Event + Default,
+#[derive(Debug,Default,PartialEq)]
+struct EventCoeffect<T, E>(T, PhantomData<E>)
+where T: Default, E: Default;
+
+impl<T, E> EventCoeffect<T, E>
+where T: Default,
+      E: Default
 {
-    fn get() -> T {
+    pub fn new(val: T) -> EventCoeffect<T, E> {
+        EventCoeffect(val, PhantomData)
+    }
+}
+
+impl<T, E> Coeffect for EventCoeffect<T, E>
+where T: 'static + Event<E> + Default,
+      E: 'static + Default,
+{
+    fn get() -> EventCoeffect<T, E> {
         Default::default()
+    }
+}
+
+pub struct EventInterceptor<T, E>(T, PhantomData<E>);
+
+impl<T, E> EventInterceptor<T, E> {
+    pub fn new(event: T) -> EventInterceptor<T, E> {
+        EventInterceptor(event, PhantomData)
+    }
+}
+
+impl<T, E> Interceptor for EventInterceptor<T, E>
+where T: Event<E>,
+      E: 'static,
+{
+    type Error = E;
+
+    fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
+                                                                      Error = Self::Error>> {
+        self.0.handle(context)
     }
 }
 
@@ -214,17 +246,27 @@ mod tests {
     #[derive(Debug,Default,PartialEq)]
     struct FooEvent(u8);
 
-    impl Event for FooEvent {
-        fn handle(&self) {
-
+    impl<E> Event<E> for FooEvent
+    where E: 'static,
+    {
+        fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>> {
+            Box::new(future::ok(context))
         }
     }
 
     #[test]
     fn test_event_as_coeffect() {
         let mut context: Context<()> = Context::new();
-        let event = FooEvent(10);
+        let event: EventCoeffect<FooEvent, ()> = EventCoeffect::new(FooEvent(10));
         context.coeffects.insert(event);
-        assert_eq!(Some(&FooEvent(10)), context.coeffects.get::<FooEvent>())
+        assert_eq!(Some(&EventCoeffect::new(FooEvent(10))), context.coeffects.get::<EventCoeffect<FooEvent, ()>>())
+    }
+
+    #[test]
+    fn test_event_as_interceptor() {
+        let context: Context<()> = Context::new();
+        let event = FooEvent(10);
+        let i: EventInterceptor<FooEvent, ()> = EventInterceptor::new(event);
+        let after_context = i.before(context).wait();
     }
 }
