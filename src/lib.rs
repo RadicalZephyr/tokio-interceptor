@@ -160,6 +160,14 @@ where S: 'static,
     }
 }
 
+impl<T> Coeffect for T
+where T: 'static + Event + Default,
+{
+    fn get() -> T {
+        Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,5 +209,22 @@ mod tests {
         i.after(context);
 
         assert_eq!(state.borrow().0, 10);
+    }
+
+    #[derive(Debug,Default,PartialEq)]
+    struct FooEvent(u8);
+
+    impl Event for FooEvent {
+        fn handle(&self) {
+
+        }
+    }
+
+    #[test]
+    fn test_event_as_coeffect() {
+        let mut context: Context<()> = Context::new();
+        let event = FooEvent(10);
+        context.coeffects.insert(event);
+        assert_eq!(Some(&FooEvent(10)), context.coeffects.get::<FooEvent>())
     }
 }
