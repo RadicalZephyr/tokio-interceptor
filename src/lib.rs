@@ -1,32 +1,17 @@
 extern crate anymap;
 extern crate futures;
 
-use std::any::Any;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use anymap::AnyMap;
 use futures::{future,Future};
 
+mod coeffects;
+pub use coeffects::{Coeffect,NewCoeffect,InjectCoeffect};
 
-pub trait Coeffect: Any {}
-
-impl<C: Coeffect + ?Sized> Coeffect for Arc<C> {}
-impl<C: Coeffect + ?Sized> Coeffect for Rc<C> {}
-impl<C: Coeffect + ?Sized> Coeffect for Box<C> {}
-
-pub trait NewCoeffect {
-    type Instance: Coeffect;
-
-    fn new_coeffect(&self) -> Self::Instance;
-}
-
-pub trait Effect {
-    fn action(&mut self);
-}
+mod effects;
+pub use effects::{Effect,HandleEffects};
 
 pub trait Event<E> {
     fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
@@ -64,72 +49,6 @@ pub trait Interceptor {
     }
 }
 
-#[derive(Default)]
-pub struct InjectCoeffect<C, E>(C, PhantomData<E>);
-
-impl<C, E> InjectCoeffect<C, E>
-{
-    pub fn new(new_coeffect: C) -> InjectCoeffect<C, E> {
-        InjectCoeffect(new_coeffect, PhantomData)
-    }
-}
-
-impl<C, E> Interceptor for InjectCoeffect<C, E>
-where C: NewCoeffect,
-      E: 'static,
-{
-    type Error = E;
-
-    fn before(&self, mut context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                  Error = Self::Error>> {
-        context.coeffects.insert(self.0.new_coeffect());
-        Box::new(future::ok(context))
-    }
-}
-
-pub struct HandleEffects<E>(PhantomData<E>);
-
-impl<E> HandleEffects<E>
-{
-    pub fn new() -> HandleEffects<E> {
-        HandleEffects(PhantomData)
-    }
-}
-
-impl<E> Interceptor for HandleEffects<E>
-where E: 'static,
-{
-    type Error = E;
-
-    fn after(&self, mut context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                 Error = Self::Error>> {
-        for e in context.effects.iter_mut() {
-            e.action();
-        }
-        Box::new(future::ok(context))
-    }
-}
-
-pub struct MutateState<S, F> {
-    state_ref: Rc<RefCell<S>>,
-    mutate: F,
-}
-
-impl<S, F> MutateState<S, F> {
-    pub fn new(state_ref: Rc<RefCell<S>>, mutate: F) -> MutateState<S, F> {
-        MutateState { state_ref, mutate }
-    }
-}
-
-impl<S, F> Effect for MutateState<S, F>
-where S: 'static,
-      F: 'static + FnMut(&mut S)
-{
-    fn action(&mut self) {
-        (&mut self.mutate)(&mut self.state_ref.borrow_mut())
-    }
-}
-
 pub struct EventInterceptor<T, E>(T, PhantomData<E>);
 
 impl<T, E> EventInterceptor<T, E> {
@@ -151,16 +70,18 @@ where T: Event<E>,
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 
-    #[derive(Debug,PartialEq)]
-    struct State(u8);
+    use effects::MutateState;
 
-    struct StateHolder(Rc<State>);
+    #[derive(Debug,PartialEq)]
+    pub struct State(pub u8);
+
+    pub struct StateHolder(pub Rc<State>);
 
     impl NewCoeffect for StateHolder {
         type Instance = Rc<State>;
@@ -170,9 +91,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug,PartialEq)]
-    struct Test(u8);
-
     impl Coeffect for State {}
 
     #[test]
@@ -180,28 +98,6 @@ mod tests {
         let mut cmap = AnyMap::new();
         cmap.insert(State(1));
         assert_eq!(Some(&State(1)), cmap.get::<State>())
-    }
-
-    #[test]
-    fn test_coeffect_interceptor() {
-        let context: Context<()> = Context::new();
-        let state_holder = StateHolder(Rc::new(State(101)));
-        let i = InjectCoeffect::<StateHolder, ()>::new(state_holder);
-        let new_ctx = i.before(context).wait().unwrap();
-        assert_eq!(State(101), **new_ctx.coeffects.get::<Rc<State>>().unwrap());
-    }
-
-    #[test]
-    fn test_effect_interceptor() {
-        let mut context: Context<()> = Context::new();
-        let i: HandleEffects<()> = HandleEffects::new();
-
-        let state = Rc::new(RefCell::new(State(0)));
-        let e = MutateState::new(Rc::clone(&state), |state: &mut State| state.0 = 10);
-        context.effects.push(Box::new(e));
-        i.after(context);
-
-        assert_eq!(state.borrow().0, 10);
     }
 
     struct Db(Rc<RefCell<State>>);
