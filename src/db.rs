@@ -74,16 +74,24 @@ mod tests {
 
     #[test]
     fn test_event_as_interceptor() {
-        let context: Context<()> = Context::new();
+        let mut context: Context<()> = Context::new();
         let event = Plus::new(101, 10);
         let db = Db::new(State(101));
         let i_state = InjectCoeffect::<Db<State>, ()>::new(db.clone());
         let i_effects: HandleEffects<()> = HandleEffects::new();
         let i_event: EventInterceptor<Plus, ()> = EventInterceptor::new(event);
 
-        let ctx1 = i_state.before(context).wait().unwrap();
-        let ctx2 = i_event.before(ctx1).wait().unwrap();
-        let _after_ctx = i_effects.after(ctx2).wait().unwrap();
+        let queue = vec![Box::new(i_state) as Box<Interceptor<Error = ()>>,
+                         Box::new(i_effects) as Box<Interceptor<Error = ()>>,
+                         Box::new(i_event) as Box<Interceptor<Error = ()>>];
+        let mut stack = vec![];
+        for i in queue.into_iter() {
+            context = i.before(context).wait().unwrap();
+            stack.push(i);
+        }
+        for i in stack.into_iter() {
+            context = i.after(context).wait().unwrap();
+        }
 
         assert_eq!(State(111), *db.borrow());
     }
