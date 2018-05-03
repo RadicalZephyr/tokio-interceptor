@@ -1,56 +1,22 @@
-#[macro_use]
-extern crate mopa;
+extern crate anymap;
 extern crate futures;
 
-use std::any::TypeId;
+use std::any::Any;
 use std::cell::RefCell;
-use std::collections::{HashMap,VecDeque};
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use anymap::AnyMap;
 use futures::{future,Future};
 
-use mopa::Any;
-
-macro_rules! with_any_map {
-    ($trait_:ident, $mapname:ident) => {
-        #[derive(Default)]
-        pub struct $mapname(HashMap<TypeId, Box<$trait_>>);
-
-        impl $mapname {
-            pub fn new() -> $mapname {
-                $mapname(HashMap::new())
-            }
-
-            pub fn get<'a, T: 'static + $trait_>(&'a self) -> Option<&'a T> {
-                self.0.get(&TypeId::of::<T>()).and_then(|any| any.downcast_ref::<T>())
-            }
-
-            pub fn insert<T: 'static + $trait_>(&mut self, value: T) {
-                self.0.insert(TypeId::of::<T>(), Box::new(value));
-            }
-
-            pub fn values(&self) -> std::collections::hash_map::Values<TypeId, Box<$trait_>> {
-                self.0.values()
-            }
-
-            pub fn values_mut(&mut self) -> std::collections::hash_map::ValuesMut<TypeId, Box<$trait_>> {
-                self.0.values_mut()
-            }
-        }
-    }
-}
 
 pub trait Coeffect: Any {}
-
-mopafy!(Coeffect);
-with_any_map!(Coeffect, CoeffectMap);
 
 impl<C: Coeffect + ?Sized> Coeffect for Arc<C> {}
 impl<C: Coeffect + ?Sized> Coeffect for Rc<C> {}
 impl<C: Coeffect + ?Sized> Coeffect for Box<C> {}
-
 
 pub trait NewCoeffect {
     type Instance: Coeffect;
@@ -66,9 +32,8 @@ pub trait Event<E> {
     fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
 }
 
-#[derive(Default)]
 pub struct Context<E> {
-    pub coeffects: CoeffectMap,
+    pub coeffects: AnyMap,
     pub effects: Vec<Box<Effect>>,
     pub queue: VecDeque<Box<Interceptor<Error = E>>>,
     pub stack: Vec<Box<Interceptor<Error = E>>>,
@@ -77,7 +42,7 @@ pub struct Context<E> {
 impl<E> Context<E> {
     pub fn new() -> Context<E> {
         Context {
-            coeffects: CoeffectMap::new(),
+            coeffects: AnyMap::new(),
             effects: vec![],
             queue: VecDeque::new(),
             stack: vec![],
@@ -165,24 +130,6 @@ where S: 'static,
     }
 }
 
-#[derive(Debug,Default,PartialEq)]
-struct EventCoeffect<T, E>(T, PhantomData<E>)
-where T: Default, E: Default;
-
-impl<T, E> EventCoeffect<T, E>
-where T: Default,
-      E: Default
-{
-    pub fn new(val: T) -> EventCoeffect<T, E> {
-        EventCoeffect(val, PhantomData)
-    }
-}
-
-impl<T, E> Coeffect for EventCoeffect<T, E>
-where T: 'static + Event<E> + Default,
-      E: 'static + Default,
-{}
-
 pub struct EventInterceptor<T, E>(T, PhantomData<E>);
 
 impl<T, E> EventInterceptor<T, E> {
@@ -230,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_coeffect_map() {
-        let mut cmap = CoeffectMap::new();
+        let mut cmap = AnyMap::new();
         cmap.insert(State(1));
         assert_eq!(Some(&State(1)), cmap.get::<State>())
     }
@@ -320,9 +267,9 @@ mod tests {
     #[test]
     fn test_event_as_coeffect() {
         let mut context: Context<()> = Context::new();
-        let event: EventCoeffect<Plus, ()> = EventCoeffect::new(Plus::new(0, 10));
+        let event = Plus::new(0, 10);
         context.coeffects.insert(event);
-        assert_eq!(Some(&EventCoeffect::new(Plus::new(0, 10))), context.coeffects.get::<EventCoeffect<Plus, ()>>())
+        assert_eq!(Some(&Plus::new(0, 10)), context.coeffects.get::<Plus>())
     }
 
     #[test]
