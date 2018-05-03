@@ -58,11 +58,9 @@ pub trait NewCoeffect {
     fn new_coeffect(&self) -> Self::Instance;
 }
 
-pub trait Effect: Any {
+pub trait Effect {
     fn action(&mut self);
 }
-mopafy!(Effect);
-with_any_map!(Effect, EffectMap);
 
 pub trait Event<E> {
     fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
@@ -71,7 +69,7 @@ pub trait Event<E> {
 #[derive(Default)]
 pub struct Context<E> {
     pub coeffects: CoeffectMap,
-    pub effects: EffectMap,
+    pub effects: Vec<Box<Effect>>,
     pub queue: VecDeque<Box<Interceptor<Error = E>>>,
     pub stack: Vec<Box<Interceptor<Error = E>>>,
 }
@@ -80,7 +78,7 @@ impl<E> Context<E> {
     pub fn new() -> Context<E> {
         Context {
             coeffects: CoeffectMap::new(),
-            effects: EffectMap::new(),
+            effects: vec![],
             queue: VecDeque::new(),
             stack: vec![],
         }
@@ -140,7 +138,7 @@ where E: 'static,
 
     fn after(&self, mut context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
                                                                  Error = Self::Error>> {
-        for e in context.effects.values_mut() {
+        for e in context.effects.iter_mut() {
             e.action();
         }
         Box::new(future::ok(context))
@@ -253,7 +251,7 @@ mod tests {
 
         let state = Rc::new(RefCell::new(State(0)));
         let e = MutateState::new(Rc::clone(&state), |state: &mut State| state.0 = 10);
-        context.effects.insert(e);
+        context.effects.push(Box::new(e));
         i.after(context);
 
         assert_eq!(state.borrow().0, 10);
@@ -311,9 +309,9 @@ mod tests {
                 let db = context.coeffects.get::<Db>().unwrap();
                 assert_eq!(self.initial, db.borrow().0);
                 let inc = self.inc;
-                context.effects.insert(db.mutate(move |state: &mut State| {
+                context.effects.push(Box::new(db.mutate(move |state: &mut State| {
                     state.0 += inc;
-                }));
+                })));
             }
             Box::new(future::ok(context))
         }
