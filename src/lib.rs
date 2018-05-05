@@ -2,6 +2,8 @@ extern crate anymap;
 extern crate futures;
 
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::rc::Rc;
 
 use anymap::AnyMap;
 use futures::{future,Future};
@@ -56,6 +58,34 @@ impl<T: Event<()>> Interceptor for T {
     fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
                                                                   Error = Self::Error>> {
         (self).handle(context)
+    }
+}
+
+impl<I: Interceptor + ?Sized> Interceptor for Arc<I> {
+    type Error = I::Error;
+
+    fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
+                                                                  Error = Self::Error>> {
+        (**self).before(context)
+    }
+
+    fn after(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
+                                                                 Error = Self::Error>> {
+        (**self).after(context)
+    }
+}
+
+impl<I: Interceptor + ?Sized> Interceptor for Rc<I> {
+    type Error = I::Error;
+
+    fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
+                                                                  Error = Self::Error>> {
+        (**self).before(context)
+    }
+
+    fn after(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
+                                                                 Error = Self::Error>> {
+        (**self).after(context)
     }
 }
 
