@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_event_as_interceptor() {
-        let mut context: Context<()> = Context::new(&vec![]);
+        let mut context: Context<()> = Context::new(vec![]);
         let event = Plus::new(101, 10);
         let db = Db::new(State(101));
         let i_state = InjectCoeffect::<Db<State>, ()>::new(db.clone());

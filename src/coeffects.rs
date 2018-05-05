@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_coeffect_interceptor() {
-        let context: Context<()> = Context::new(&vec![]);
+        let context: Context<()> = Context::new(vec![]);
         let state_holder = StateHolder(Rc::new(State(101)));
         let i = InjectCoeffect::<StateHolder, ()>::new(state_holder);
         let new_ctx = i.before(context).wait().unwrap();

@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_effect_interceptor() {
-        let mut context: Context<()> = Context::new(&vec![]);
+        let mut context: Context<()> = Context::new(vec![]);
         let i: HandleEffects<()> = HandleEffects::new();
 
         let state = Rc::new(RefCell::new(State(0)));
