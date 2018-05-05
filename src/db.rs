@@ -40,7 +40,7 @@ impl<S: 'static> NewCoeffect for Db<S> {
 mod tests {
     use super::*;
 
-    use {Context,Event,Interceptor,InjectCoeffect,HandleEffects,EventInterceptor};
+    use {Context,Event,Interceptor,InjectCoeffect,HandleEffects};
     use tests::State;
     use futures::{future,Future};
 
@@ -79,7 +79,7 @@ mod tests {
         let db = Db::new(State(101));
         let i_state = InjectCoeffect::<Db<State>, ()>::new(db.clone());
         let i_effects: HandleEffects<()> = HandleEffects::new();
-        let i_event: EventInterceptor<Plus, ()> = EventInterceptor::new(event);
+        let i_event = event;
 
         let queue = vec![Box::new(i_state) as Box<Interceptor<Error = ()>>,
                          Box::new(i_effects) as Box<Interceptor<Error = ()>>,

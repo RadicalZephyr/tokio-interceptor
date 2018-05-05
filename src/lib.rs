@@ -2,7 +2,6 @@ extern crate anymap;
 extern crate futures;
 
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 
 use anymap::AnyMap;
 use futures::{future,Future};
@@ -52,23 +51,11 @@ pub trait Interceptor {
     }
 }
 
-pub struct EventInterceptor<T, E>(T, PhantomData<E>);
-
-impl<T, E> EventInterceptor<T, E> {
-    pub fn new(event: T) -> EventInterceptor<T, E> {
-        EventInterceptor(event, PhantomData)
-    }
-}
-
-impl<T, E> Interceptor for EventInterceptor<T, E>
-where T: Event<E>,
-      E: 'static,
-{
-    type Error = E;
-
+impl<T: Event<()>> Interceptor for T {
+    type Error = ();
     fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                      Error = Self::Error>> {
-        self.0.handle(context)
+                                                                  Error = Self::Error>> {
+        (self).handle(context)
     }
 }
 
