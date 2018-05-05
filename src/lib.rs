@@ -59,6 +59,24 @@ impl<T: Event<()>> Interceptor for T {
     }
 }
 
+pub trait NewInterceptor
+{
+    type Error: 'static;
+    type Interceptor: Interceptor<Error = Self::Error>;
+
+    fn new_interceptor(&self) -> Self::Interceptor;
+}
+
+
+impl<I: Copy + Interceptor> NewInterceptor for I {
+    type Error = I::Error;
+    type Interceptor = I;
+
+    fn new_interceptor(&self) -> I {
+        *self
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
