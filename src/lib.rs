@@ -24,16 +24,16 @@ pub trait Event<E> {
 pub struct Context<E> {
     pub coeffects: AnyMap,
     pub effects: Vec<Box<Effect>>,
-    pub queue: VecDeque<Box<Interceptor<Error = E>>>,
+    pub queue: VecDeque<Rc<Box<Interceptor<Error = E>>>>,
     pub stack: Vec<Box<Interceptor<Error = E>>>,
 }
 
 impl<E> Context<E> {
-    pub fn new() -> Context<E> {
+    pub fn new(interceptors: &Vec<Rc<Box<Interceptor<Error = E>>>>) -> Context<E> {
         Context {
             coeffects: AnyMap::new(),
             effects: vec![],
-            queue: VecDeque::new(),
+            queue: interceptors.iter().map(|i_ref| Rc::clone(i_ref)).collect(),
             stack: vec![],
         }
     }
