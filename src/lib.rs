@@ -123,26 +123,49 @@ enum Dispatched<E> {
     Empty,
 }
 
+impl<E> Dispatched<E> {
+    fn poll_queue<F>(&mut self, mut ctx: Context<E>, f: F) -> Result<Async<Context<E>>, E>
+    where F: Fn(Rc<Box<Interceptor<Error = E>>>, Context<E>)
+                -> Box<Future<Item = Context<E>, Error = E>>
+
+    {
+        loop {
+            if let Some(next) = ctx.queue.pop_front() {
+                let mut next_ctx = f(next, ctx);
+                match next_ctx.poll() {
+                    Err(e) => return Err(e),
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Ok(Async::Ready(next_ctx)) => {
+                        ctx = next_ctx;
+                        continue;
+                    }
+                };
+            }
+        }
+    }
+}
+
 impl<E: 'static> Future for Dispatched<E> {
     type Item = Context<E>;
     type Error = E;
 
     fn poll(&mut self) -> Result<Async<Context<E>>, E> {
-        match *self {
-            Dispatched::Empty => (),
-            Dispatched::Done(ref _ctx) => (),
-            Dispatched::Forwards(ref mut future_ctx) => {
-                let mut ctx = try_ready!(future_ctx.poll());
-                if let Some(next) = ctx.queue.pop_front() {
-                    next.before(ctx);
-
-                } else {
-
-                }
-            },
-            Dispatched::Backwards(ref mut future_ctx) => (),
-        };
-        Ok(Async::Ready(Context::new(vec![])))
+        loop {
+            match *self {
+                Dispatched::Empty => (),
+                Dispatched::Done(ref _ctx) => (),
+                Dispatched::Forwards(ref mut future_ctx) => {
+                    let mut ctx = try_ready!(future_ctx.poll());
+                    if let Some(next) = ctx.queue.pop_front() {
+                        mem::replace(future_ctx, next.before(ctx));
+                        continue;
+                    } else {
+                        return Ok(Async::Ready(Context::new(vec![])));
+                    }
+                },
+                Dispatched::Backwards(ref mut future_ctx) => (),
+            }
+        }
     }
 }
 
