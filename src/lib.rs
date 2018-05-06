@@ -128,18 +128,19 @@ impl<E: 'static> Future for Dispatched<E> {
     type Error = E;
 
     fn poll(&mut self) -> Result<Async<Context<E>>, E> {
-        match mem::replace(self, Dispatched::Empty) {
+        match *self {
             Dispatched::Empty => (),
-            Dispatched::Done(_ctx) => (),
-            Dispatched::Forwards(mut future_ctx) => {
+            Dispatched::Done(ref _ctx) => (),
+            Dispatched::Forwards(ref mut future_ctx) => {
                 let mut ctx = try_ready!(future_ctx.poll());
                 if let Some(next) = ctx.queue.pop_front() {
-                    *self = Dispatched::Forwards(next.before(ctx));
+                    next.before(ctx);
+
                 } else {
-                    *self = Dispatched::Backwards(Box::new(future::ok(ctx)));
+
                 }
             },
-            Dispatched::Backwards(_future_ctx) => (),
+            Dispatched::Backwards(ref mut future_ctx) => (),
         };
         Ok(Async::Ready(Context::new(vec![])))
     }
@@ -203,9 +204,9 @@ pub mod tests {
         assert_eq!(Some(&State(1)), cmap.get::<State>())
     }
 
-    struct FooEvent(pub Rc<RefCell<bool>>);
+    struct BeforeEvent(pub Rc<RefCell<bool>>);
 
-    impl Event<()> for FooEvent {
+    impl Event<()> for BeforeEvent {
         fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
             let mut called = self.0.borrow_mut();
             *called = true;
@@ -214,11 +215,45 @@ pub mod tests {
     }
 
     #[test]
-    fn test_dispatcher_registers_events() {
+    fn test_dispatcher_calls_event_before() {
         let mut app = EventDispatcher::new();
-        app.register_event::<FooEvent>(vec![]);
+        app.register_event::<BeforeEvent>(vec![]);
         let called = Rc::new(RefCell::new(false));
-        app.dispatch(FooEvent(Rc::clone(&called))).wait();
+        app.dispatch(BeforeEvent(Rc::clone(&called))).wait();
         assert_eq!(true, *called.borrow());
+    }
+
+    struct BeforeInter(pub Rc<RefCell<bool>>);
+
+    impl Interceptor for BeforeInter {
+        type Error = ();
+
+        fn before(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+            let mut called = self.0.borrow_mut();
+            *called = true;
+            Box::new(future::ok(context))
+        }
+    }
+
+    struct IdentityEvent;
+    impl Event<()> for IdentityEvent {
+        fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+            Box::new(future::ok(context))
+        }
+    }
+
+    #[test]
+    fn test_dispatcher_calls_interceptor_before() {
+        let mut app = EventDispatcher::new();
+
+        let called_first = Rc::new(RefCell::new(false));
+        let before_inter = BeforeInter(Rc::clone(&called_first));
+        app.register_event::<BeforeEvent>(vec![Box::new(before_inter)]);
+
+        let called_second = Rc::new(RefCell::new(false));
+        app.dispatch(BeforeEvent(Rc::clone(&called_second))).wait();
+
+        assert_eq!(true, *called_first.borrow());
+        assert_eq!(true, *called_second.borrow());
     }
 }
