@@ -110,37 +110,51 @@ impl<I: Copy + Interceptor> NewInterceptor for I {
     }
 }
 
+enum Direction {
+    Forwards, Backwards
+}
+
+impl Direction {
+    fn call<E>(&self, interceptor: Rc<Box<Interceptor<Error = E>>>, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>
+    where E: 'static
+    {
+        match *self {
+            Direction::Forwards => interceptor.before(context),
+            Direction::Backwards => interceptor.after(context),
+        }
+    }
+
+    fn is_forwards(&self) -> bool {
+        match *self {
+            Direction::Forwards => true,
+            Direction::Backwards => false,
+        }
+    }
+
+    fn is_backwards(&self) -> bool {
+        match *self {
+            Direction::Forwards => false,
+            Direction::Backwards => true,
+        }
+    }
+}
+
 /// Dispatched represents the eventual completion of an Event
 /// being fully processed by a chain of Interceptors.  First, the
 /// chain is iterated in order threading the Context through each
 /// `before` method. On reaching the end of the chain, the
 /// interceptors are iterated in the reverse order, and the
 /// Context is threaded through their `after` methods.
-enum Dispatched<E> {
-    Forwards(Box<Future<Item = Context<E>, Error = E>>),
-    Backwards(Box<Future<Item = Context<E>, Error = E>>),
-    Done(Context<E>),
-    Empty,
+struct Dispatched<E> {
+    direction: Direction,
+    next_ctx: Box<Future<Item = Context<E>, Error = E>>,
 }
 
 impl<E> Dispatched<E> {
-    fn poll_queue<F>(&mut self, mut ctx: Context<E>, f: F) -> Result<Async<Context<E>>, E>
-    where F: Fn(Rc<Box<Interceptor<Error = E>>>, Context<E>)
-                -> Box<Future<Item = Context<E>, Error = E>>
-
-    {
-        loop {
-            if let Some(next) = ctx.queue.pop_front() {
-                let mut next_ctx = f(next, ctx);
-                match next_ctx.poll() {
-                    Err(e) => return Err(e),
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Ok(Async::Ready(next_ctx)) => {
-                        ctx = next_ctx;
-                        continue;
-                    }
-                };
-            }
+    pub fn new(next_ctx: Box<Future<Item = Context<E>, Error = E>>) -> Dispatched<E> {
+        Dispatched {
+            direction: Direction::Forwards,
+            next_ctx,
         }
     }
 }
@@ -151,19 +165,21 @@ impl<E: 'static> Future for Dispatched<E> {
 
     fn poll(&mut self) -> Result<Async<Context<E>>, E> {
         loop {
-            match *self {
-                Dispatched::Empty => (),
-                Dispatched::Done(ref _ctx) => (),
-                Dispatched::Forwards(ref mut future_ctx) => {
-                    let mut ctx = try_ready!(future_ctx.poll());
-                    if let Some(next) = ctx.queue.pop_front() {
-                        mem::replace(future_ctx, next.before(ctx));
-                        continue;
-                    } else {
-                        return Ok(Async::Ready(Context::new(vec![])));
-                    }
-                },
-                Dispatched::Backwards(ref mut future_ctx) => (),
+            let mut ctx = try_ready!(self.next_ctx.poll());
+            if let Some(next) = ctx.queue.pop_front() {
+                ctx.stack.push(Rc::clone(&next));
+                self.next_ctx = self.direction.call(next, ctx);
+                continue;
+            } else {
+                if self.direction.is_forwards() {
+                    self.direction = Direction::Backwards;
+                    let stack = mem::replace(&mut ctx.stack, vec![]);
+                    ctx.queue = stack.into_iter().rev().collect();
+                    self.next_ctx = Box::new(future::ok(ctx));
+                    continue;
+                } else {
+                    return Ok(Async::Ready(ctx));
+                }
             }
         }
     }
@@ -190,9 +206,9 @@ impl EventDispatcher<()> {
             let mut interceptors: Vec<Rc<Box<Interceptor<Error = ()>>>> = interceptors.iter().map(|i| Rc::clone(i)).collect();
             interceptors.push(Rc::new(Box::new(event) as Box<Interceptor<Error = ()>>));
             let mut context = Context::new(interceptors);
-            Dispatched::Forwards(Box::new(future::ok(context)))
+            Dispatched::new(Box::new(future::ok(context)))
         } else {
-            Dispatched::Empty
+            Dispatched::new(Box::new(future::ok(Context::new(vec![]))))
         }
     }
 }
@@ -278,5 +294,38 @@ pub mod tests {
 
         assert_eq!(true, *called_first.borrow());
         assert_eq!(true, *called_second.borrow());
+    }
+
+    struct AfterInter(pub Rc<RefCell<bool>>);
+
+    impl Interceptor for AfterInter {
+        type Error = ();
+
+        fn after(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+            let mut called = self.0.borrow_mut();
+            *called = true;
+            Box::new(future::ok(context))
+        }
+    }
+
+    #[test]
+    fn test_dispatcher_calls_interceptor_after() {
+        let mut app = EventDispatcher::new();
+
+        let called_first = Rc::new(RefCell::new(false));
+        let before_inter = BeforeInter(Rc::clone(&called_first));
+
+        let called_third = Rc::new(RefCell::new(false));
+        let after_inter = AfterInter(Rc::clone(&called_third));
+
+        app.register_event::<BeforeEvent>(vec![Box::new(before_inter),
+                                               Box::new(after_inter)]);
+
+        let called_second = Rc::new(RefCell::new(false));
+        app.dispatch(BeforeEvent(Rc::clone(&called_second))).wait();
+
+        assert_eq!(true, *called_first.borrow());
+        assert_eq!(true, *called_second.borrow());
+        assert_eq!(true, *called_third.borrow());
     }
 }
