@@ -1,4 +1,5 @@
 extern crate anymap;
+#[macro_use]
 extern crate futures;
 
 use std::any::TypeId;
@@ -109,89 +110,74 @@ impl<I: Copy + Interceptor> NewInterceptor for I {
     }
 }
 
-    /// Dispatched represents the eventual completion of an Event
-    /// being fully processed by a chain of Interceptors.  First, the
-    /// chain is iterated in order threading the Context through each
-    /// `before` method. On reaching the end of the chain, the
-    /// interceptors are iterated in the reverse order, and the
-    /// Context is threaded through their `after` methods.
-    enum Dispatched<E> {
-        Forwards(Box<Future<Item = Context<E>, Error = E>>),
-        Backwards(Box<Future<Item = Context<E>, Error = E>>),
-        Done(Context<E>),
-        Empty,
-    }
+/// Dispatched represents the eventual completion of an Event
+/// being fully processed by a chain of Interceptors.  First, the
+/// chain is iterated in order threading the Context through each
+/// `before` method. On reaching the end of the chain, the
+/// interceptors are iterated in the reverse order, and the
+/// Context is threaded through their `after` methods.
+enum Dispatched<E> {
+    Forwards(Box<Future<Item = Context<E>, Error = E>>),
+    Backwards(Box<Future<Item = Context<E>, Error = E>>),
+    Done(Context<E>),
+    Empty,
+}
 
-    impl<E: 'static> Future for Dispatched<E> {
-        type Item = Context<E>;
-        type Error = E;
+impl<E: 'static> Future for Dispatched<E> {
+    type Item = Context<E>;
+    type Error = E;
 
-        fn poll(&mut self) -> Result<Async<Context<E>>, E> {
-            let next_state = match mem::replace(self, Dispatched::Empty) {
-                Dispatched::Empty => return Ok(Async::Ready(Context::new(vec![]))),
-                Dispatched::Done(context) => return Ok(Async::Ready(context)),
-                Dispatched::Forwards(ref mut ctx) => match ctx.poll() {
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Err(e) => return Err(e),
-                    Ok(Async::Ready(mut ctx)) => {
-                        if let Some(next_interceptor) = ctx.queue.pop_front() {
-                            ctx.stack.push(Rc::clone(&next_interceptor));
-                            Dispatched::Forwards(next_interceptor.before(ctx))
-                        } else {
-                            let stack = mem::replace(&mut ctx.stack, vec![]);
-                            ctx.queue = stack.into_iter().collect();
-                            Dispatched::Backwards(Box::new(future::ok(ctx)))
-                        }
-                    }
-                },
-                Dispatched::Backwards(ref mut ctx) => match ctx.poll() {
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Err(e) => return Err(e),
-                    Ok(Async::Ready(mut ctx)) => {
-                        if let Some(next_interceptor) = ctx.queue.pop_front() {
-                            Dispatched::Forwards(next_interceptor.after(ctx))
-                        } else {
-                            Dispatched::Done(ctx)
-                        }
-                    }
+    fn poll(&mut self) -> Result<Async<Context<E>>, E> {
+        match mem::replace(self, Dispatched::Empty) {
+            Dispatched::Empty => (),
+            Dispatched::Done(_ctx) => (),
+            Dispatched::Forwards(mut future_ctx) => {
+                let mut ctx = try_ready!(future_ctx.poll());
+                if let Some(next) = ctx.queue.pop_front() {
+                    *self = Dispatched::Forwards(next.before(ctx));
+                } else {
+                    *self = Dispatched::Backwards(Box::new(future::ok(ctx)));
                 }
-            };
-            *self = next_state;
-            Ok(Async::NotReady)
+            },
+            Dispatched::Backwards(_future_ctx) => (),
+        };
+        Ok(Async::Ready(Context::new(vec![])))
+    }
+}
+
+struct EventDispatcher<E> {
+    event_handlers: HashMap<TypeId, Vec<Rc<Box<Interceptor<Error = E>>>>>,
+}
+
+impl EventDispatcher<()> {
+    pub fn new() -> EventDispatcher<()> {
+        EventDispatcher {
+            event_handlers: HashMap::new(),
         }
     }
 
-    struct EventDispatcher<E> {
-        event_handlers: HashMap<TypeId, Vec<Rc<Box<Interceptor<Error = E>>>>>,
+    pub fn register_event<Ev: 'static + Event<()>>(&mut self, interceptors: Vec<Box<Interceptor<Error = ()>>>) {
+        self.event_handlers.insert(TypeId::of::<Ev>(),
+                                   interceptors.into_iter().map(|i| Rc::new(i)).collect());
     }
 
-    impl<Err: 'static> EventDispatcher<Err> {
-        pub fn new() -> EventDispatcher<Err> {
-            EventDispatcher {
-                event_handlers: HashMap::new(),
-            }
-        }
-
-        pub fn register_event<Ev: 'static + Event<Err>>(&mut self, interceptors: Vec<Box<Interceptor<Error = Err>>>) {
-            self.event_handlers.insert(TypeId::of::<Ev>(),
-                                       interceptors.into_iter().map(|i| Rc::new(i)).collect());
-        }
-
-        pub fn dispatch<Ev: 'static + Event<Err>>(&self, event: Ev) -> Dispatched<Err> {
-            if let Some(interceptors) = self.event_handlers.get(&TypeId::of::<Ev>()) {
-                let interceptors = interceptors.iter().map(|i| Rc::clone(i)).collect();
-                let mut context = Context::new(interceptors);
-                Dispatched::Forwards(Box::new(future::ok(context)))
-            } else {
-                Dispatched::Empty
-            }
+    pub fn dispatch<Ev: 'static + Event<()>>(&self, event: Ev) -> Dispatched<()> {
+        if let Some(interceptors) = self.event_handlers.get(&TypeId::of::<Ev>()) {
+            let mut interceptors: Vec<Rc<Box<Interceptor<Error = ()>>>> = interceptors.iter().map(|i| Rc::clone(i)).collect();
+            interceptors.push(Rc::new(Box::new(event) as Box<Interceptor<Error = ()>>));
+            let mut context = Context::new(interceptors);
+            Dispatched::Forwards(Box::new(future::ok(context)))
+        } else {
+            Dispatched::Empty
         }
     }
+}
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
 
+    use std::cell::RefCell;
     use std::rc::Rc;
 
 
@@ -217,10 +203,12 @@ pub mod tests {
         assert_eq!(Some(&State(1)), cmap.get::<State>())
     }
 
-    struct FooEvent;
+    struct FooEvent(pub Rc<RefCell<bool>>);
 
     impl Event<()> for FooEvent {
         fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+            let mut called = self.0.borrow_mut();
+            *called = true;
             Box::new(future::ok(context))
         }
     }
@@ -229,6 +217,8 @@ pub mod tests {
     fn test_dispatcher_registers_events() {
         let mut app = EventDispatcher::new();
         app.register_event::<FooEvent>(vec![]);
-        app.dispatch(FooEvent{});
+        let called = Rc::new(RefCell::new(false));
+        app.dispatch(FooEvent(Rc::clone(&called))).wait();
+        assert_eq!(true, *called.borrow());
     }
 }
