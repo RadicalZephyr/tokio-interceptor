@@ -203,7 +203,7 @@ impl EventDispatcher<()> {
 
     pub fn dispatch<Ev: 'static + Event<()>>(&self, event: Ev) -> Dispatched<()> {
         if let Some(interceptors) = self.event_handlers.get(&TypeId::of::<Ev>()) {
-            let mut interceptors: Vec<Rc<Box<Interceptor<Error = ()>>>> = interceptors.iter().map(|i| Rc::clone(i)).collect();
+            let mut interceptors: Vec<Rc<Box<Interceptor<Error = ()>>>> = interceptors.iter().map(Rc::clone).collect();
             interceptors.push(Rc::new(Box::new(event) as Box<Interceptor<Error = ()>>));
             let mut context = Context::new(interceptors);
             Dispatched::new(Box::new(future::ok(context)))
