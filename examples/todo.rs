@@ -6,10 +6,10 @@ use std::io::{self, BufRead};
 use std::thread;
 
 use futures::stream::iter_result;
-use futures::{Future, Sink, Stream};
+use futures::{future, Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::Core;
-use tokio_interceptor::EventDispatcher;
+use tokio_interceptor::{Context, Event, EventDispatcher};
 
 #[derive(Debug)]
 enum Error {
@@ -35,8 +35,17 @@ pub fn spawn_stdin_stream_unbounded() -> UnboundedReceiver<String> {
     channel_stream
 }
 
-fn setup(app: &mut EventDispatcher<()>) {
+struct Input(String);
 
+impl Event<()> for Input {
+    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        println!("{:?}", self.0);
+        Box::new(future::ok(context))
+    }
+}
+
+fn setup(app: &mut EventDispatcher<()>) {
+    app.register_event::<Input>(vec![]);
 }
 
 pub fn main() {
@@ -44,9 +53,11 @@ pub fn main() {
     setup(&mut app);
 
     let mut core = Core::new().unwrap();
+    let handle = core.handle();
+
     let std_in_ch = spawn_stdin_stream_unbounded();
     core.run(std_in_ch.for_each(|m| {
-        println!("{:?}", m);
+        handle.spawn(app.dispatch(Input(m)).map(|_| ()).map_err(|_| ()));
         Ok(())
     })).unwrap();
 }
