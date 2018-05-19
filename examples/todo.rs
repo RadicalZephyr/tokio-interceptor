@@ -91,7 +91,7 @@ impl Default for AppState {
 struct Print(String);
 
 impl Effect for Print {
-    fn action(&mut self) {
+    fn action(self: Box<Self>) {
         println!("{}", self.0);
     }
 }
@@ -99,7 +99,7 @@ impl Effect for Print {
 struct ShowMenu;
 
 impl Event<()> for ShowMenu {
-    fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         let menu = format!(r#"
 ---
 What do you want to do?
@@ -118,7 +118,7 @@ struct Dispatch(Box<Event<()>>);
 
 impl Effect for Dispatch
 {
-    fn action(&mut self) {
+    fn action(self: Box<Self>) {
         // I need a mutable handle to the App object in order to
         // dispatch these...
     }
@@ -127,7 +127,7 @@ impl Effect for Dispatch
 struct Input(String);
 
 impl Event<()> for Input {
-    fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         let event = {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             match db.borrow().mode {
@@ -145,7 +145,18 @@ impl Event<()> for Input {
 struct MenuInput(String);
 
 impl Event<()> for MenuInput {
-    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        let next_mode = match self.0.as_ref() {
+            "1" => Mode::Menu,
+            "2" => Mode::Adding,
+            "3" => Mode::Marking,
+            "4" => Mode::Removing,
+            _ => Mode::Menu,
+        };
+        {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = next_mode)));
+        }
         context.next()
     }
 }
@@ -153,7 +164,7 @@ impl Event<()> for MenuInput {
 struct AddTodo(String);
 
 impl Event<()> for AddTodo {
-    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         context.next()
     }
 }
@@ -161,7 +172,7 @@ impl Event<()> for AddTodo {
 struct RemoveTodo(String);
 
 impl Event<()> for RemoveTodo {
-    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         context.next()
     }
 }
@@ -169,7 +180,7 @@ impl Event<()> for RemoveTodo {
 struct MarkDone(String);
 
 impl Event<()> for MarkDone {
-    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         context.next()
     }
 }

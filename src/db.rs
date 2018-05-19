@@ -59,7 +59,7 @@ mod tests {
     impl<E> Event<E> for Plus
     where E: 'static,
     {
-        fn handle(&self, mut context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>> {
+        fn handle(self: Box<Self>, mut context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>> {
             {
                 let db = context.coeffects.get::<Db<State>>().unwrap();
                 assert_eq!(self.initial, db.borrow().0);

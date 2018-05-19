@@ -3,6 +3,7 @@ extern crate anymap;
 extern crate futures;
 
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::{HashMap,VecDeque};
 use std::marker::PhantomData;
 use std::mem;
@@ -22,7 +23,7 @@ mod effects;
 pub use effects::{Effect,HandleEffects};
 
 pub trait Event<E> {
-    fn handle(&self, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
+    fn handle(self: Box<Self>, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
 }
 
 pub struct Context<E> {
@@ -67,11 +68,11 @@ pub trait Interceptor {
     }
 }
 
-struct EventInterceptor<T: Event<E>, E>(T, PhantomData<E>);
+struct EventInterceptor<T: Event<E>, E>(RefCell<Option<T>>, PhantomData<E>);
 
 impl<T: Event<E>, E> EventInterceptor<T, E> {
     pub fn new(event: T) -> EventInterceptor<T, E> {
-        EventInterceptor(event, PhantomData)
+        EventInterceptor(RefCell::new(Some(event)), PhantomData)
     }
 }
 
@@ -79,7 +80,9 @@ impl<E: 'static, T: Event<E>> Interceptor for EventInterceptor<T, E> {
     type Error = E;
     fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
                                                                   Error = Self::Error>> {
-        (self).0.handle(context)
+        let mut cell = self.0.borrow_mut();
+        let event = cell.take();
+        (Box::new(event.unwrap())).handle(context)
     }
 }
 
@@ -265,7 +268,7 @@ pub mod tests {
     struct BeforeEvent(pub Rc<RefCell<bool>>);
 
     impl Event<()> for BeforeEvent {
-        fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
             let mut called = self.0.borrow_mut();
             *called = true;
             Box::new(future::ok(context))
@@ -295,7 +298,7 @@ pub mod tests {
 
     struct IdentityEvent;
     impl Event<()> for IdentityEvent {
-        fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
             Box::new(future::ok(context))
         }
     }
