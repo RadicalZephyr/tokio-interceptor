@@ -154,7 +154,7 @@ impl Direction {
 /// `before` method. On reaching the end of the chain, the
 /// interceptors are iterated in the reverse order, and the
 /// Context is threaded through their `after` methods.
-struct Dispatched<E> {
+pub struct Dispatched<E> {
     direction: Direction,
     next_ctx: Box<Future<Item = Context<E>, Error = E>>,
 }
@@ -194,7 +194,7 @@ impl<E: 'static> Future for Dispatched<E> {
     }
 }
 
-struct EventDispatcher<E> {
+pub struct EventDispatcher<E> {
     event_handlers: HashMap<TypeId, Vec<Rc<Box<Interceptor<Error = E>>>>>,
 }
 
