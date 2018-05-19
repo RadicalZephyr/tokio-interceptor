@@ -45,6 +45,12 @@ impl<E> Context<E> {
     pub fn push_effect<Eff: 'static + Effect>(&mut self, effect: Eff) {
         self.effects.push(Box::new(effect));
     }
+
+    pub fn next(self) -> Box<Future<Item = Context<E>, Error = E>>
+    where E: 'static
+    {
+        Box::new(future::ok(self))
+    }
 }
 
 pub trait Interceptor {

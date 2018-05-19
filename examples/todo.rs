@@ -6,7 +6,7 @@ use std::io::{self, BufRead};
 use std::thread;
 
 use futures::stream::iter_result;
-use futures::{future, Future, Sink, Stream};
+use futures::{Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
 use tokio_interceptor::{Context, Effect, Event, EventDispatcher,
@@ -88,7 +88,7 @@ What do you want to do?
 ---
 "#);
         context.push_effect(Print(menu));
-        Box::new(future::ok(context))
+        context.next()
     }
 }
 
@@ -97,7 +97,7 @@ struct Input(String);
 impl Event<()> for Input {
     fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         context.push_effect(Print(self.0.clone()));
-        Box::new(future::ok(context))
+        context.next()
     }
 }
 
