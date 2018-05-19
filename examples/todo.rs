@@ -114,18 +114,74 @@ What do you want to do?
     }
 }
 
+struct Dispatch(Box<Event<()>>);
+
+impl Effect for Dispatch
+{
+    fn action(&mut self) {
+        // I need a mutable handle to the App object in order to
+        // dispatch these...
+    }
+}
+
 struct Input(String);
 
 impl Event<()> for Input {
     fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        context.push_effect(Print(self.0.clone()));
+        let event = {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            match db.borrow().mode {
+                Mode::Menu => Box::new(MenuInput(self.0.clone())) as Box<Event<()>>,
+                Mode::Adding => Box::new(AddTodo(self.0.clone())) as Box<Event<()>>,
+                Mode::Removing => Box::new(RemoveTodo(self.0.clone())) as Box<Event<()>>,
+                Mode::Marking => Box::new(MarkDone(self.0.clone())) as Box<Event<()>>,
+            }
+        };
+        context.push_effect(Dispatch(event));
         context.next()
     }
 }
 
+struct MenuInput(String);
+
+impl Event<()> for MenuInput {
+    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        context.next()
+    }
+}
+
+struct AddTodo(String);
+
+impl Event<()> for AddTodo {
+    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        context.next()
+    }
+}
+
+struct RemoveTodo(String);
+
+impl Event<()> for RemoveTodo {
+    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        context.next()
+    }
+}
+
+struct MarkDone(String);
+
+impl Event<()> for MarkDone {
+    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        context.next()
+    }
+}
+
+
 fn setup(app: &mut App<AppState>) {
     app.register_event::<Input>();
     app.register_event::<ShowMenu>();
+    app.register_event::<MenuInput>();
+    app.register_event::<AddTodo>();
+    app.register_event::<RemoveTodo>();
+    app.register_event::<MarkDone>();
 }
 
 pub fn main() {
