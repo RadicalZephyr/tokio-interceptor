@@ -41,6 +41,10 @@ impl<E> Context<E> {
             stack: vec![],
         }
     }
+
+    pub fn push_effect<Eff: 'static + Effect>(&mut self, effect: Eff) {
+        self.effects.push(Box::new(effect));
+    }
 }
 
 pub trait Interceptor {

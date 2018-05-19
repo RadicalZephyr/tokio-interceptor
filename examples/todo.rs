@@ -87,7 +87,7 @@ What do you want to do?
 4 - Remove a task
 ---
 "#);
-        context.effects.push(Box::new(Print(menu)));
+        context.push_effect(Print(menu));
         Box::new(future::ok(context))
     }
 }
@@ -96,7 +96,7 @@ struct Input(String);
 
 impl Event<()> for Input {
     fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        context.effects.push(Box::new(Print(self.0.clone())));
+        context.push_effect(Print(self.0.clone()));
         Box::new(future::ok(context))
     }
 }
