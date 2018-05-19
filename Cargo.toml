@@ -6,3 +6,6 @@ authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
 [dependencies]
 anymap = "0.12"
 futures = "0.1"
+
+[dev-dependencies]
+tokio-core = "0.1"
