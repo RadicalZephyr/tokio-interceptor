@@ -74,10 +74,20 @@ impl Effect for Output {
     }
 }
 
-struct Init;
+struct ShowMenu;
 
-impl Event<()> for Init {
-    fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+impl Event<()> for ShowMenu {
+    fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        let menu = format!(r#"
+---
+What do you want to do?
+1 - Display tasks
+2 - Add a new task
+3 - Mark a task as done
+4 - Remove a task
+---
+"#);
+        context.effects.push(Box::new(Output(menu)));
         Box::new(future::ok(context))
     }
 }
@@ -92,8 +102,8 @@ impl Event<()> for Input {
 }
 
 fn setup(app: &mut App) {
-    app.register_event::<Init>();
     app.register_event::<Input>();
+    app.register_event::<ShowMenu>();
 }
 
 pub fn main() {
@@ -104,7 +114,7 @@ pub fn main() {
     let mut app = App::new(handle);
     setup(&mut app);
 
-    app.dispatch(Init);
+    app.dispatch(ShowMenu);
 
     let std_in_ch = spawn_stdin_stream_unbounded();
     core.run(std_in_ch.for_each(|m| {
