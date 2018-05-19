@@ -66,9 +66,9 @@ pub fn spawn_stdin_stream_unbounded() -> UnboundedReceiver<String> {
     channel_stream
 }
 
-struct Output(String);
+struct Print(String);
 
-impl Effect for Output {
+impl Effect for Print {
     fn action(&mut self) {
         println!("{}", self.0);
     }
@@ -87,7 +87,7 @@ What do you want to do?
 4 - Remove a task
 ---
 "#);
-        context.effects.push(Box::new(Output(menu)));
+        context.effects.push(Box::new(Print(menu)));
         Box::new(future::ok(context))
     }
 }
@@ -96,7 +96,7 @@ struct Input(String);
 
 impl Event<()> for Input {
     fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        context.effects.push(Box::new(Output(self.0.clone())));
+        context.effects.push(Box::new(Print(self.0.clone())));
         Box::new(future::ok(context))
     }
 }
