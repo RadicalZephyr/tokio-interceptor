@@ -9,21 +9,29 @@ use futures::stream::iter_result;
 use futures::{Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
-use tokio_interceptor::{Context, Effect, Event, EventDispatcher,
-                        HandleEffects, Interceptor};
+use tokio_interceptor::{Context, Db, Effect, Event,
+                        EventDispatcher, HandleEffects,
+                        InjectCoeffect, Interceptor};
 
-struct App {
+struct App<State> {
     handle: Handle,
+    db: Db<State>,
     dispatcher: EventDispatcher<()>,
 }
 
-impl App {
-    pub fn new(handle: Handle) -> App {
-        App { handle, dispatcher: EventDispatcher::new() }
+impl<State> App<State>
+where State: 'static + Default,
+{
+    pub fn new(handle: Handle) -> App<State> {
+        App { handle,
+              db: Db::new(State::default()),
+              dispatcher: EventDispatcher::new() }
     }
 
-    fn default_interceptors() -> Vec<Box<Interceptor<Error = ()>>> {
-        vec![Box::new(HandleEffects::new())]
+    fn default_interceptors(&self) -> Vec<Box<Interceptor<Error = ()>>> {
+        let inject_state = InjectCoeffect::<Db<State>, ()>::new(self.db.clone());
+        let handle_effects = HandleEffects::new();
+        vec![Box::new(inject_state), Box::new(handle_effects)]
     }
 
     pub fn register_event<E: 'static + Event<()>>(&mut self) {
@@ -31,7 +39,7 @@ impl App {
     }
 
     pub fn register_event_with<E: 'static + Event<()>>(&mut self, mut interceptors: Vec<Box<Interceptor<Error = ()>>>) {
-        let mut i = App::default_interceptors();
+        let mut i = self.default_interceptors();
         i.append(&mut interceptors);
 
         self.dispatcher.register_event::<E>(i);
@@ -64,6 +72,20 @@ pub fn spawn_stdin_stream_unbounded() -> UnboundedReceiver<String> {
     });
 
     channel_stream
+}
+
+enum Mode {
+    Adding, Removing, Marking, Menu
+}
+
+struct AppState {
+    mode: Mode,
+}
+
+impl Default for AppState {
+    fn default() -> AppState {
+        AppState { mode: Mode::Menu }
+    }
 }
 
 struct Print(String);
@@ -101,7 +123,7 @@ impl Event<()> for Input {
     }
 }
 
-fn setup(app: &mut App) {
+fn setup(app: &mut App<AppState>) {
     app.register_event::<Input>();
     app.register_event::<ShowMenu>();
 }
