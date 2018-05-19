@@ -8,8 +8,39 @@ use std::thread;
 use futures::stream::iter_result;
 use futures::{future, Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
-use tokio_core::reactor::Core;
-use tokio_interceptor::{Context, Event, EventDispatcher};
+use tokio_core::reactor::{Core, Handle};
+use tokio_interceptor::{Context, Effect, Event, EventDispatcher,
+                        HandleEffects, Interceptor};
+
+struct App {
+    handle: Handle,
+    dispatcher: EventDispatcher<()>,
+}
+
+impl App {
+    pub fn new(handle: Handle) -> App {
+        App { handle, dispatcher: EventDispatcher::new() }
+    }
+
+    fn default_interceptors() -> Vec<Box<Interceptor<Error = ()>>> {
+        vec![Box::new(HandleEffects::new())]
+    }
+
+    pub fn register_event<E: 'static + Event<()>>(&mut self) {
+        self.register_event_with::<E>(vec![]);
+    }
+
+    pub fn register_event_with<E: 'static + Event<()>>(&mut self, mut interceptors: Vec<Box<Interceptor<Error = ()>>>) {
+        let mut i = App::default_interceptors();
+        i.append(&mut interceptors);
+
+        self.dispatcher.register_event::<E>(i);
+    }
+
+    pub fn dispatch<E: 'static + Event<()>>(&mut self, e: E) {
+        self.handle.spawn(self.dispatcher.dispatch(e).map(|_| ()).map_err(|_| ()));
+    }
+}
 
 #[derive(Debug)]
 enum Error {
@@ -35,29 +66,49 @@ pub fn spawn_stdin_stream_unbounded() -> UnboundedReceiver<String> {
     channel_stream
 }
 
-struct Input(String);
+struct Output(String);
 
-impl Event<()> for Input {
+impl Effect for Output {
+    fn action(&mut self) {
+        println!("{}", self.0);
+    }
+}
+
+struct Init;
+
+impl Event<()> for Init {
     fn handle(&self, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        println!("{:?}", self.0);
         Box::new(future::ok(context))
     }
 }
 
-fn setup(app: &mut EventDispatcher<()>) {
-    app.register_event::<Input>(vec![]);
+struct Input(String);
+
+impl Event<()> for Input {
+    fn handle(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        context.effects.push(Box::new(Output(self.0.clone())));
+        Box::new(future::ok(context))
+    }
+}
+
+fn setup(app: &mut App) {
+    app.register_event::<Init>();
+    app.register_event::<Input>();
 }
 
 pub fn main() {
-    let mut app = EventDispatcher::new();
-    setup(&mut app);
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
+    let mut app = App::new(handle);
+    setup(&mut app);
+
+    app.dispatch(Init);
+
     let std_in_ch = spawn_stdin_stream_unbounded();
     core.run(std_in_ch.for_each(|m| {
-        handle.spawn(app.dispatch(Input(m)).map(|_| ()).map_err(|_| ()));
+        app.dispatch(Input(m));
         Ok(())
     })).unwrap();
 }
