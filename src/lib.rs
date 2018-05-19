@@ -154,7 +154,7 @@ impl Direction {
 /// `before` method. On reaching the end of the chain, the
 /// interceptors are iterated in the reverse order, and the
 /// Context is threaded through their `after` methods.
-pub struct Dispatched<E> {
+struct Dispatched<E> {
     direction: Direction,
     next_ctx: Box<Future<Item = Context<E>, Error = E>>,
 }
@@ -210,7 +210,7 @@ impl<E: 'static> EventDispatcher<E> {
                                    interceptors.into_iter().map(|i| Rc::new(i)).collect());
     }
 
-    pub fn dispatch<Ev: 'static + Event<E>>(&self, event: Ev) -> Dispatched<E> {
+    pub fn dispatch<Ev: 'static + Event<E>>(&self, event: Ev) -> impl Future<Item = Context<E>> {
         if let Some(interceptors) = self.event_handlers.get(&TypeId::of::<Ev>()) {
             let mut interceptors: Vec<Rc<Box<Interceptor<Error = E>>>> = interceptors.iter().map(Rc::clone).collect();
             interceptors.push(Rc::new(Box::new(EventInterceptor::new(event)) as Box<Interceptor<Error = E>>));
