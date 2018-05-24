@@ -205,10 +205,8 @@ impl Event<()> for MarkDone {
 
 struct ShowPrompt;
 
-impl Interceptor for ShowPrompt {
-    type Error = ();
-
-    fn after(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+impl Event<()> for ShowPrompt {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
@@ -229,7 +227,20 @@ impl Interceptor for ShowPrompt {
     }
 }
 
+impl Interceptor for ShowPrompt {
+    type Error = ();
+
+    fn after(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+            context.effects.push(dispatcher.dispatch(ShowPrompt));
+        }
+        context.next()
+    }
+}
+
 fn setup(app: &mut App<AppState>) {
+    app.register_event::<ShowPrompt>();
     app.register_event::<ShowMenu>();
     app.register_event::<ShowTodos>();
     app.register_event::<Input>();
