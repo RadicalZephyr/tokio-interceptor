@@ -153,7 +153,7 @@ impl Event<()> for Input {
                     },
                     Mode::Removing => {
                         let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(RemoveTodo(input)))
+                            Box::new(EventInterceptor::new(RemoveTodo))
                         ];
                         context.queue.extend(interceptors);
                     },
@@ -233,7 +233,7 @@ impl Event<()> for AddTodo {
     }
 }
 
-struct RemoveTodo(String);
+struct RemoveTodo;
 
 #[derive(Debug)]
 enum RemoveError<E> {
@@ -244,9 +244,10 @@ enum RemoveError<E> {
 impl Event<()> for RemoveTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
+            let input = context.coeffects.remove::<Input>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             let max = db.borrow().todos.len();
-            let index_res = self.0.parse::<isize>()
+            let index_res = input.parse::<isize>()
                 .map_err(RemoveError::ParseError)
                 .and_then(|index| {
                     if index >= 0 && (index as usize) < max {
