@@ -212,21 +212,34 @@ impl Event<()> for AddTodo {
 
 struct RemoveTodo(String);
 
+#[derive(Debug)]
+enum RemoveError<E> {
+    ParseError(E),
+    OutOfRange(isize),
+}
+
 impl Event<()> for RemoveTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             let max = db.borrow().todos.len();
-            match self.0.parse::<usize>().ok() {
-                Some(index) => {
-                    if index < max {
-                        context.effects.push(Box::new(db.mutate(move |state: &mut AppState| {
-                            state.todos.remove(index);
-                        })));
+            let index_res = self.0.parse::<isize>()
+                .map_err(RemoveError::ParseError)
+                .and_then(|index| {
+                    if index >= 0 && (index as usize) < max {
+                        Ok(index as usize)
+                    } else {
+                        Err(RemoveError::OutOfRange(index))
                     }
+                });
+            match index_res {
+                Ok(index) => {
+                    context.effects.push(Box::new(db.mutate(move |state: &mut AppState| {
+                        state.todos.remove(index);
+                    })));
                 },
-                None => {
-                    context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+                Err(e) => {
+                    context.effects.push(Box::new(Print(format!("Error removing: {:?}", e))))
                 },
             };
 
