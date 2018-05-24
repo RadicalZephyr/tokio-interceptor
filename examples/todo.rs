@@ -184,10 +184,15 @@ impl Event<()> for ShowTodos {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            context.effects.push(Box::new(Print(format!("Items:\n"))));
-            for (i, todo) in db.borrow().todos.iter().enumerate() {
-                context.effects.push(Box::new(Print(format!("{}: [{}] {}\n", i, " ", todo))));
+            context.effects.push(Box::new(Print(format!("\nTODO:"))));
+            let todos = &db.borrow().todos;
+            if 0 == todos.len() {
+                context.effects.push(Box::new(Print("  Nothing to do.".to_string())));
             }
+            for (i, todo) in todos.iter().enumerate() {
+                context.effects.push(Box::new(Print(format!("  - {}: [{}] {}", i, " ", todo))));
+            }
+            context.effects.push(Box::new(Print("".to_string())));
         }
         context.next()
     }
