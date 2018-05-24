@@ -150,7 +150,11 @@ struct MenuInput(String);
 impl Event<()> for MenuInput {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         let next_mode = match self.0.as_ref() {
-            "1" => Mode::Menu,
+            "1" => {
+                let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+                context.effects.push(dispatcher.dispatch(ShowTodos));
+                Mode::Menu
+            },
             "2" => Mode::Adding,
             "3" => Mode::Marking,
             "4" => Mode::Removing,
@@ -182,7 +186,20 @@ impl Event<()> for ShowTodos {
 struct AddTodo(String);
 
 impl Event<()> for AddTodo {
-    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            let todo = match self.0.trim() {
+                "" => None,
+                todo => Some(todo.to_string()),
+            };
+
+            if let Some(todo) = todo {
+                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(todo))));
+            } else {
+                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+            }
+        }
         context.next()
     }
 }
@@ -190,7 +207,24 @@ impl Event<()> for AddTodo {
 struct RemoveTodo(String);
 
 impl Event<()> for RemoveTodo {
-    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            let max = db.borrow().todos.len();
+            match self.0.parse::<usize>().ok() {
+                Some(index) => {
+                    if index < max {
+                        context.effects.push(Box::new(db.mutate(move |state: &mut AppState| {
+                            state.todos.remove(index);
+                        })));
+                    }
+                },
+                None => {
+                    context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+                },
+            };
+
+        }
         context.next()
     }
 }
