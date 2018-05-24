@@ -1,0 +1,25 @@
+use std::collections::VecDeque;
+use std::iter::{FromIterator,IntoIterator,Iterator};
+use std::rc::Rc;
+
+use super::Interceptor;
+
+pub struct InterceptorQueue<E>(VecDeque<Rc<Box<Interceptor<Error = E>>>>);
+
+impl<E> InterceptorQueue<E> {
+    pub fn push_back(&mut self, value: Rc<Box<Interceptor<Error = E>>>) {
+        self.0.push_back(value);
+    }
+
+    pub fn pop_front(&mut self) -> Option<Rc<Box<Interceptor<Error = E>>>> {
+        self.0.pop_front()
+    }
+}
+
+impl<E> FromIterator<Rc<Box<Interceptor<Error = E>>>> for InterceptorQueue<E> {
+    fn from_iter<T>(iter: T) -> InterceptorQueue<E>
+    where T: IntoIterator<Item = Rc<Box<Interceptor<Error = E>>>>
+    {
+        InterceptorQueue(iter.into_iter().collect())
+    }
+}

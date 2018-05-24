@@ -3,7 +3,7 @@ extern crate anymap;
 extern crate futures;
 extern crate tokio_core;
 
-use std::collections::VecDeque;
+
 use std::mem;
 use std::sync::Arc;
 use std::rc::Rc;
@@ -23,10 +23,13 @@ pub use effects::{Effect,HandleEffects};
 mod events;
 pub use events::{Event,EventDispatcher,Dispatch,Dispatcher};
 
+mod queue;
+pub use queue::InterceptorQueue;
+
 pub struct Context<E> {
     pub coeffects: AnyMap,
     pub effects: Vec<Box<Effect>>,
-    pub queue: VecDeque<Rc<Box<Interceptor<Error = E>>>>,
+    pub queue: InterceptorQueue<E>,
     pub stack: Vec<Rc<Box<Interceptor<Error = E>>>>,
 }
 
