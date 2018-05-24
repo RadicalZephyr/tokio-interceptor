@@ -164,6 +164,21 @@ impl Event<()> for MenuInput {
     }
 }
 
+struct ShowTodos;
+
+impl Event<()> for ShowTodos {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            context.effects.push(Box::new(Print(format!("Items:\n"))));
+            for (i, todo) in db.borrow().todos.iter().enumerate() {
+                context.effects.push(Box::new(Print(format!("{}: [{}] {}\n", i, " ", todo))));
+            }
+        }
+        context.next()
+    }
+}
+
 struct AddTodo(String);
 
 impl Event<()> for AddTodo {
@@ -188,14 +203,40 @@ impl Event<()> for MarkDone {
     }
 }
 
+struct ShowPrompt;
+
+impl Interceptor for ShowPrompt {
+    type Error = ();
+
+    fn after(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+            match db.borrow().mode {
+                Mode::Menu => context.effects.push(dispatcher.dispatch(ShowMenu)),
+                Mode::Adding => {
+                    context.effects.push(dispatcher.dispatch(ShowTodos));
+                },
+                Mode::Removing => {
+                    context.effects.push(dispatcher.dispatch(ShowTodos));
+                },
+                Mode::Marking => {
+                    context.effects.push(dispatcher.dispatch(ShowTodos));
+                },
+            }
+        }
+        context.next()
+    }
+}
 
 fn setup(app: &mut App<AppState>) {
-    app.register_event::<Input>();
     app.register_event::<ShowMenu>();
-    app.register_event::<MenuInput>();
-    app.register_event::<AddTodo>();
-    app.register_event::<RemoveTodo>();
-    app.register_event::<MarkDone>();
+    app.register_event::<ShowTodos>();
+    app.register_event::<Input>();
+    app.register_event_with::<MenuInput>(vec![Box::new(ShowPrompt)]);
+    app.register_event_with::<AddTodo>(vec![Box::new(ShowPrompt)]);
+    app.register_event_with::<RemoveTodo>(vec![Box::new(ShowPrompt)]);
+    app.register_event_with::<MarkDone>(vec![Box::new(ShowPrompt)]);
 }
 
 pub fn main() {
