@@ -14,6 +14,10 @@ impl<E> InterceptorQueue<E> {
     pub fn pop_front(&mut self) -> Option<Rc<Box<Interceptor<Error = E>>>> {
         self.0.pop_front()
     }
+
+    pub fn clear(&mut self) {
+        self.0.clear()
+    }
 }
 
 impl<E> FromIterator<Rc<Box<Interceptor<Error = E>>>> for InterceptorQueue<E> {

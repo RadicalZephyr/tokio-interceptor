@@ -133,45 +133,64 @@ impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            let input = match self.0.trim() {
-                "" => None,
-                input => Some(input.to_string()),
-            };
-            if let Some(input) = input {
-                match db.borrow().mode {
-                    Mode::Menu     => {
-                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(MenuInput))
-                        ];
-                        context.queue.extend(interceptors);
-                    },
-                    Mode::Adding   => {
-                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(AddTodo))
-                        ];
-                        context.queue.extend(interceptors);
-                    },
-                    Mode::Removing => {
-                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(RemoveTodo))
-                        ];
-                        context.queue.extend(interceptors);
-                    },
-                    Mode::Marking  => {
-                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(MarkDone(input)))
-                        ];
-                        context.queue.extend(interceptors);
-                    },
-                }
-            } else {
-                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
-                let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
-                context.effects.push(dispatcher.dispatch(ShowMenu));
+            match db.borrow().mode {
+                Mode::Menu     => {
+                    let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                        Box::new(EmptyInputHandler),
+                        Box::new(EventInterceptor::new(MenuInput))
+                    ];
+                    context.queue.extend(interceptors);
+                },
+                Mode::Adding   => {
+                    let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                        Box::new(EmptyInputHandler),
+                        Box::new(EventInterceptor::new(AddTodo))
+                    ];
+                    context.queue.extend(interceptors);
+                },
+                Mode::Removing => {
+                    let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                        Box::new(EmptyInputHandler),
+                        Box::new(EventInterceptor::new(RemoveTodo))
+                    ];
+                    context.queue.extend(interceptors);
+                },
+                Mode::Marking  => {
+                    let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                        Box::new(EmptyInputHandler),
+                        Box::new(EventInterceptor::new(MarkDone))
+                    ];
+                    context.queue.extend(interceptors);
+                },
             }
         }
         let input = *self;
         context.coeffects.insert(input);
+        context.next()
+    }
+}
+
+struct NonEmptyInput(String);
+
+struct EmptyInputHandler;
+
+impl Interceptor for EmptyInputHandler {
+    type Error = ();
+
+    fn before(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        match context.coeffects.remove::<Input>().unwrap().0.as_ref() {
+            "" => {
+                context.queue.clear();
+                let db = context.coeffects.get::<Db<AppState>>().unwrap();
+                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+                let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+                context.effects.push(dispatcher.dispatch(ShowMenu));
+            },
+            input => {
+                context.coeffects.insert(NonEmptyInput(input.to_string()));
+            }
+        };
+
         context.next()
     }
 }
@@ -181,7 +200,7 @@ struct MenuInput;
 impl Event<()> for MenuInput {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
-            let input = context.coeffects.get::<Input>().unwrap();
+            let input = context.coeffects.get::<NonEmptyInput>().unwrap();
             let next_mode = match input.0.as_ref() {
                 "1" => {
                     let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
@@ -225,7 +244,7 @@ struct AddTodo;
 impl Event<()> for AddTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
-            let input = context.coeffects.remove::<Input>().unwrap().0;
+            let input = context.coeffects.remove::<NonEmptyInput>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(input))));
         }
@@ -244,7 +263,7 @@ enum RemoveError<E> {
 impl Event<()> for RemoveTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
-            let input = context.coeffects.remove::<Input>().unwrap().0;
+            let input = context.coeffects.remove::<NonEmptyInput>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             let max = db.borrow().todos.len();
             let index_res = input.parse::<isize>()
@@ -272,7 +291,7 @@ impl Event<()> for RemoveTodo {
     }
 }
 
-struct MarkDone(String);
+struct MarkDone;
 
 impl Event<()> for MarkDone {
     fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
