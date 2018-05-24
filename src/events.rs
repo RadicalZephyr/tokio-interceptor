@@ -14,7 +14,7 @@ pub trait Event<E> {
     fn handle(self: Box<Self>, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
 }
 
-pub(crate) struct EventInterceptor<T: Event<E>, E>(RefCell<Option<T>>, PhantomData<E>);
+pub struct EventInterceptor<T: Event<E>, E>(RefCell<Option<T>>, PhantomData<E>);
 
 impl<T: Event<E>, E> EventInterceptor<T, E> {
     pub fn new(event: T) -> EventInterceptor<T, E> {

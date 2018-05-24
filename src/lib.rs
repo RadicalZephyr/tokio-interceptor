@@ -21,7 +21,7 @@ mod effects;
 pub use effects::{Effect,HandleEffects};
 
 mod events;
-pub use events::{Event,EventDispatcher,Dispatch,Dispatcher};
+pub use events::{Event,EventDispatcher,EventInterceptor,Dispatch,Dispatcher};
 
 mod queue;
 pub use queue::InterceptorQueue;

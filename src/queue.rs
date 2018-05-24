@@ -23,3 +23,11 @@ impl<E> FromIterator<Rc<Box<Interceptor<Error = E>>>> for InterceptorQueue<E> {
         InterceptorQueue(iter.into_iter().collect())
     }
 }
+
+impl<E> Extend<Box<Interceptor<Error = E>>> for InterceptorQueue<E> {
+    fn extend<T>(&mut self, iter: T)
+    where T: IntoIterator<Item = Box<Interceptor<Error = E>>>
+    {
+        self.0.extend(iter.into_iter().map(|i| Rc::new(i)))
+    }
+}

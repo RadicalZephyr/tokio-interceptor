@@ -13,7 +13,7 @@ use futures::{Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
 use tokio_interceptor::{Context, Db, Dispatcher, Effect,
-                        Event, EventDispatcher, HandleEffects,
+                        Event, EventDispatcher, EventInterceptor, HandleEffects,
                         InjectCoeffect, Interceptor};
 
 struct App<State> {
@@ -133,17 +133,36 @@ impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
             let input = match self.0.trim() {
                 "" => None,
                 input => Some(input.to_string()),
             };
             if let Some(input) = input {
                 match db.borrow().mode {
-                    Mode::Menu     => context.effects.push(dispatcher.dispatch(MenuInput(input))),
-                    Mode::Adding   => context.effects.push(dispatcher.dispatch(AddTodo(input))),
-                    Mode::Removing => context.effects.push(dispatcher.dispatch(RemoveTodo(input))),
-                    Mode::Marking  => context.effects.push(dispatcher.dispatch(MarkDone(input))),
+                    Mode::Menu     => {
+                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                            Box::new(EventInterceptor::new(MenuInput(input)))
+                        ];
+                        context.queue.extend(interceptors);
+                    },
+                    Mode::Adding   => {
+                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                            Box::new(EventInterceptor::new(AddTodo(input)))
+                        ];
+                        context.queue.extend(interceptors);
+                    },
+                    Mode::Removing => {
+                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                            Box::new(EventInterceptor::new(RemoveTodo(input)))
+                        ];
+                        context.queue.extend(interceptors);
+                    },
+                    Mode::Marking  => {
+                        let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
+                            Box::new(EventInterceptor::new(MarkDone(input)))
+                        ];
+                        context.queue.extend(interceptors);
+                    },
                 }
             } else {
                 context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
@@ -296,11 +315,7 @@ fn setup(app: &mut App<AppState>) {
     app.register_event::<ShowPrompt>();
     app.register_event::<ShowMenu>();
     app.register_event::<ShowTodos>();
-    app.register_event::<Input>();
-    app.register_event_with::<MenuInput>(vec![Box::new(ShowPrompt)]);
-    app.register_event_with::<AddTodo>(vec![Box::new(ShowPrompt)]);
-    app.register_event_with::<RemoveTodo>(vec![Box::new(ShowPrompt)]);
-    app.register_event_with::<MarkDone>(vec![Box::new(ShowPrompt)]);
+    app.register_event_with::<Input>(vec![Box::new(ShowPrompt)]);
 }
 
 pub fn main() {
