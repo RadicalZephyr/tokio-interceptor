@@ -134,11 +134,21 @@ impl Event<()> for Input {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
-            match db.borrow().mode {
-                Mode::Menu     => context.effects.push(dispatcher.dispatch(MenuInput(self.0))),
-                Mode::Adding   => context.effects.push(dispatcher.dispatch(AddTodo(self.0))),
-                Mode::Removing => context.effects.push(dispatcher.dispatch(RemoveTodo(self.0))),
-                Mode::Marking  => context.effects.push(dispatcher.dispatch(MarkDone(self.0))),
+            let input = match self.0.trim() {
+                "" => None,
+                input => Some(input.to_string()),
+            };
+            if let Some(input) = input {
+                match db.borrow().mode {
+                    Mode::Menu     => context.effects.push(dispatcher.dispatch(MenuInput(input))),
+                    Mode::Adding   => context.effects.push(dispatcher.dispatch(AddTodo(input))),
+                    Mode::Removing => context.effects.push(dispatcher.dispatch(RemoveTodo(input))),
+                    Mode::Marking  => context.effects.push(dispatcher.dispatch(MarkDone(input))),
+                }
+            } else {
+                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+                let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+                context.effects.push(dispatcher.dispatch(ShowMenu));
             }
         }
         context.next()
@@ -189,16 +199,7 @@ impl Event<()> for AddTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            let todo = match self.0.trim() {
-                "" => None,
-                todo => Some(todo.to_string()),
-            };
-
-            if let Some(todo) = todo {
-                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(todo))));
-            } else {
-                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
-            }
+            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(self.0))));
         }
         context.next()
     }
