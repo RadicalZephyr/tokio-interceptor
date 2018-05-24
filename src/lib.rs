@@ -2,10 +2,7 @@ extern crate anymap;
 #[macro_use]
 extern crate futures;
 
-use std::any::TypeId;
-use std::cell::RefCell;
-use std::collections::{HashMap,VecDeque};
-use std::marker::PhantomData;
+use std::collections::VecDeque;
 use std::mem;
 use std::sync::Arc;
 use std::rc::Rc;
@@ -22,9 +19,8 @@ pub use db::Db;
 mod effects;
 pub use effects::{Effect,HandleEffects};
 
-pub trait Event<E> {
-    fn handle(self: Box<Self>, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
-}
+mod events;
+pub use events::{Event,EventDispatcher,Dispatch};
 
 pub struct Context<E> {
     pub coeffects: AnyMap,
@@ -65,24 +61,6 @@ pub trait Interceptor {
     fn after(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
                                                                  Error = Self::Error>> {
         Box::new(future::ok(context))
-    }
-}
-
-struct EventInterceptor<T: Event<E>, E>(RefCell<Option<T>>, PhantomData<E>);
-
-impl<T: Event<E>, E> EventInterceptor<T, E> {
-    pub fn new(event: T) -> EventInterceptor<T, E> {
-        EventInterceptor(RefCell::new(Some(event)), PhantomData)
-    }
-}
-
-impl<E: 'static, T: Event<E>> Interceptor for EventInterceptor<T, E> {
-    type Error = E;
-    fn before(&self, context: Context<Self::Error>) -> Box<Future<Item = Context<Self::Error>,
-                                                                  Error = Self::Error>> {
-        let mut cell = self.0.borrow_mut();
-        let event = cell.take();
-        (Box::new(event.unwrap())).handle(context)
     }
 }
 
@@ -203,34 +181,6 @@ impl<E: 'static> Future for Dispatched<E> {
                     return Ok(Async::Ready(ctx));
                 }
             }
-        }
-    }
-}
-
-pub struct EventDispatcher<E> {
-    event_handlers: HashMap<TypeId, Vec<Rc<Box<Interceptor<Error = E>>>>>,
-}
-
-impl<E: 'static> EventDispatcher<E> {
-    pub fn new() -> EventDispatcher<E> {
-        EventDispatcher {
-            event_handlers: HashMap::new(),
-        }
-    }
-
-    pub fn register_event<Ev: 'static + Event<E>>(&mut self, interceptors: Vec<Box<Interceptor<Error = E>>>) {
-        self.event_handlers.insert(TypeId::of::<Ev>(),
-                                   interceptors.into_iter().map(|i| Rc::new(i)).collect());
-    }
-
-    pub fn dispatch<Ev: 'static + Event<E>>(&self, event: Ev) -> impl Future<Item = Context<E>> {
-        if let Some(interceptors) = self.event_handlers.get(&TypeId::of::<Ev>()) {
-            let mut interceptors: Vec<Rc<Box<Interceptor<Error = E>>>> = interceptors.iter().map(Rc::clone).collect();
-            interceptors.push(Rc::new(Box::new(EventInterceptor::new(event)) as Box<Interceptor<Error = E>>));
-            let mut context = Context::new(interceptors);
-            Dispatched::new(Box::new(future::ok(context)))
-        } else {
-            Dispatched::new(Box::new(future::ok(Context::new(vec![]))))
         }
     }
 }

@@ -40,7 +40,8 @@ impl<S: 'static> NewCoeffect for Db<S> {
 mod tests {
     use super::*;
 
-    use {Context,Event,Interceptor,EventInterceptor,InjectCoeffect,HandleEffects};
+    use {Context,Event,Interceptor,InjectCoeffect,HandleEffects};
+    use events::EventInterceptor;
     use tests::State;
     use futures::{future,Future};
 

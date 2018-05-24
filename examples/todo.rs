@@ -5,13 +5,12 @@ extern crate tokio_interceptor;
 
 use std::{io, thread};
 use std::io::BufRead;
-use std::marker::PhantomData;
 
 use futures::stream::iter_result;
 use futures::{Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
-use tokio_interceptor::{Context, Db, Effect, Event,
+use tokio_interceptor::{Context, Db, Dispatch, Effect, Event,
                         EventDispatcher, HandleEffects,
                         InjectCoeffect, Interceptor};
 
@@ -113,30 +112,6 @@ What do you want to do?
 "#);
         context.push_effect(Print(menu));
         context.next()
-    }
-}
-
-struct Dispatch<E, Err>(E, PhantomData<Err>);
-
-
-impl<E, Err> Dispatch<E, Err>
-where E: 'static + Event<Err>,
-      Err: 'static,
-{
-    pub fn new(event: E) -> Dispatch<E, Err> {
-        Dispatch(event, PhantomData)
-    }
-
-    pub fn dispatch(self, dispatcher: EventDispatcher<Err>) -> impl Future<Item = Context<Err>> {
-        dispatcher.dispatch(self.0)
-    }
-}
-
-impl<E, Err> Effect for Dispatch<E, Err>
-{
-    fn action(self: Box<Self>) {
-        // I need a mutable handle to the App object in order to
-        // dispatch these...
     }
 }
 
