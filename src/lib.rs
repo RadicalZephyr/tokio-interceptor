@@ -20,7 +20,7 @@ mod effects;
 pub use effects::{Effect,HandleEffects};
 
 mod events;
-pub use events::{Event,EventDispatcher,Dispatch};
+pub use events::{Event,EventDispatcher,Dispatch,Dispatcher};
 
 pub struct Context<E> {
     pub coeffects: AnyMap,

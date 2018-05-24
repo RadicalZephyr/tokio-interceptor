@@ -31,6 +31,16 @@ impl<E: 'static, T: Event<E>> Interceptor for EventInterceptor<T, E> {
     }
 }
 
+pub struct Dispatcher<E>(Rc<EventDispatcher<E>>);
+
+impl<E> Dispatcher<E>
+where E: 'static
+{
+    pub fn dispatch<Ev: 'static + Event<E>>(&self, event: Ev) -> Box<Effect> {
+        Box::new(Dispatch::new(event, Rc::clone(&self.0)))
+    }
+}
+
 pub struct Dispatch<E, Err>(E, Rc<EventDispatcher<Err>>);
 
 impl<E, Err> Dispatch<E, Err>

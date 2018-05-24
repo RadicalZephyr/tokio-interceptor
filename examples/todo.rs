@@ -4,15 +4,14 @@ extern crate tokio_interceptor;
 
 
 use std::{io, thread};
-use std::rc::Rc;
 use std::io::BufRead;
 
 use futures::stream::iter_result;
 use futures::{Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
-use tokio_interceptor::{Context, Db, Dispatch, Effect, Event,
-                        EventDispatcher, HandleEffects,
+use tokio_interceptor::{Context, Db, Dispatcher, Effect,
+                        Event, EventDispatcher, HandleEffects,
                         InjectCoeffect, Interceptor};
 
 struct App<State> {
@@ -122,12 +121,12 @@ impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            let dispatcher = context.coeffects.get::<Rc<EventDispatcher<()>>>().unwrap();
+            let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
             match db.borrow().mode {
-                Mode::Menu     => context.effects.push(Box::new(Dispatch::new(MenuInput(self.0),  Rc::clone(dispatcher)))),
-                Mode::Adding   => context.effects.push(Box::new(Dispatch::new(AddTodo(self.0),    Rc::clone(dispatcher)))),
-                Mode::Removing => context.effects.push(Box::new(Dispatch::new(RemoveTodo(self.0), Rc::clone(dispatcher)))),
-                Mode::Marking  => context.effects.push(Box::new(Dispatch::new(MarkDone(self.0),   Rc::clone(dispatcher)))),
+                Mode::Menu     => context.effects.push(dispatcher.dispatch(MenuInput(self.0))),
+                Mode::Adding   => context.effects.push(dispatcher.dispatch(AddTodo(self.0))),
+                Mode::Removing => context.effects.push(dispatcher.dispatch(RemoveTodo(self.0))),
+                Mode::Marking  => context.effects.push(dispatcher.dispatch(MarkDone(self.0))),
             }
         }
         context.next()
