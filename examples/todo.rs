@@ -4,7 +4,9 @@ extern crate tokio_interceptor;
 
 
 use std::{io, thread};
+use std::cell::RefCell;
 use std::io::BufRead;
+use std::rc::Rc;
 
 use futures::stream::iter_result;
 use futures::{Future, Sink, Stream};
@@ -17,7 +19,7 @@ use tokio_interceptor::{Context, Db, Dispatcher, Effect,
 struct App<State> {
     handle: Handle,
     db: Db<State>,
-    dispatcher: EventDispatcher<()>,
+    dispatcher: Rc<RefCell<EventDispatcher<()>>>,
 }
 
 impl<State> App<State>
@@ -26,13 +28,14 @@ where State: 'static + Default,
     pub fn new(handle: Handle) -> App<State> {
         App { handle,
               db: Db::new(State::default()),
-              dispatcher: EventDispatcher::new() }
+              dispatcher: Rc::new(RefCell::new(EventDispatcher::new())) }
     }
 
     fn default_interceptors(&self) -> Vec<Box<Interceptor<Error = ()>>> {
         let inject_state = InjectCoeffect::<Db<State>, ()>::new(self.db.clone());
+        let inject_dispatcher = InjectCoeffect::<Dispatcher<()>, ()>::new(Dispatcher::new(&self.handle, &self.dispatcher));
         let handle_effects = HandleEffects::new();
-        vec![Box::new(inject_state), Box::new(handle_effects)]
+        vec![Box::new(inject_state), Box::new(inject_dispatcher), Box::new(handle_effects)]
     }
 
     pub fn register_event<E: 'static + Event<()>>(&mut self) {
@@ -43,11 +46,16 @@ where State: 'static + Default,
         let mut i = self.default_interceptors();
         i.append(&mut interceptors);
 
-        self.dispatcher.register_event::<E>(i);
+        match self.dispatcher.try_borrow_mut() {
+            Ok(mut dispatcher) => dispatcher.register_event::<E>(i),
+            Err(e) => {
+                println!("failed to register event: did not have unique access to EventDispatcher: {}", e);
+            },
+        };
     }
 
     pub fn dispatch<E: 'static + Event<()>>(&mut self, e: E) {
-        self.handle.spawn(self.dispatcher.dispatch(e).map(|_| ()).map_err(|_| ()));
+        self.handle.spawn(self.dispatcher.borrow().dispatch(e).map(|_| ()).map_err(|_| ()));
     }
 }
 

@@ -5,9 +5,10 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use futures::{future,Future};
+use tokio_core::reactor::Handle;
 
 use effects::Effect;
-use super::{Context,Dispatched,Interceptor};
+use super::{Coeffect,Context,Dispatched,Interceptor,NewCoeffect};
 
 pub trait Event<E> {
     fn handle(self: Box<Self>, context: Context<E>) -> Box<Future<Item = Context<E>, Error = E>>;
@@ -31,36 +32,73 @@ impl<E: 'static, T: Event<E>> Interceptor for EventInterceptor<T, E> {
     }
 }
 
-pub struct Dispatcher<E>(Rc<EventDispatcher<E>>);
+pub struct Dispatcher<E>{
+    handle: Handle,
+    dispatcher: Rc<RefCell<EventDispatcher<E>>>,
+}
 
 impl<E> Dispatcher<E>
-where E: 'static
+where E: 'static,
 {
-    pub fn dispatch<Ev: 'static + Event<E>>(&self, event: Ev) -> Box<Effect> {
-        Box::new(Dispatch::new(event, Rc::clone(&self.0)))
+    pub fn new(handle: &Handle, dispatcher: &Rc<RefCell<EventDispatcher<E>>>) -> Dispatcher<E> {
+        Dispatcher { handle: handle.clone(), dispatcher: Rc::clone(dispatcher) }
+    }
+
+    pub fn dispatch<Ev>(&self, event: Ev) -> Box<Effect>
+    where Ev: 'static + Event<E>
+    {
+        Box::new(Dispatch::new(event, &self.handle, &self.dispatcher))
     }
 }
 
-pub struct Dispatch<E, Err>(E, Rc<EventDispatcher<Err>>);
+impl<E> Clone for Dispatcher<E>
+where E: 'static,
+{
+    fn clone(&self) -> Dispatcher<E> {
+        Dispatcher::new(&self.handle, &self.dispatcher)
+    }
+}
+
+impl<E: 'static> Coeffect for Dispatcher<E> {}
+
+impl<E: 'static> NewCoeffect for Dispatcher<E> {
+    type Instance = Dispatcher<E>;
+
+    fn new_coeffect(&self) -> Dispatcher<E> {
+        self.clone()
+    }
+}
+
+pub struct Dispatch<E, Err> {
+    event: E,
+    handle: Handle,
+    dispatcher: Rc<RefCell<EventDispatcher<Err>>>,
+}
 
 impl<E, Err> Dispatch<E, Err>
 where E: 'static + Event<Err>,
       Err: 'static,
 {
-    pub fn new(event: E, dispatcher: Rc<EventDispatcher<Err>>) -> Dispatch<E, Err> {
-        Dispatch(event, dispatcher)
+    pub fn new(event: E, handle: &Handle, dispatcher: &Rc<RefCell<EventDispatcher<Err>>>) -> Dispatch<E, Err> {
+        Dispatch {
+            event,
+            handle: handle.clone(),
+            dispatcher: Rc::clone(dispatcher)
+        }
     }
 
-    pub fn dispatch(self, dispatcher: EventDispatcher<Err>) -> impl Future<Item = Context<Err>> {
-        dispatcher.dispatch(self.0)
+    pub fn into_parts(self) -> (E, Handle, Rc<RefCell<EventDispatcher<Err>>>) {
+        (self.event, self.handle, self.dispatcher)
     }
 }
 
 impl<E, Err> Effect for Dispatch<E, Err>
+where E: 'static + Event<Err>,
+      Err: 'static,
 {
     fn action(self: Box<Self>) {
-        // I need a mutable handle to the App object in order to
-        // dispatch these...
+        let (event, handle, dispatcher) = self.into_parts();
+        handle.spawn(dispatcher.borrow().dispatch(event).map(|_| ()).map_err(|_| ()));
     }
 }
 

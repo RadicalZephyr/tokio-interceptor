@@ -1,6 +1,7 @@
 extern crate anymap;
 #[macro_use]
 extern crate futures;
+extern crate tokio_core;
 
 use std::collections::VecDeque;
 use std::mem;
