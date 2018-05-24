@@ -2,8 +2,10 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_interceptor;
 
-use std::io::{self, BufRead};
-use std::thread;
+
+use std::{io, thread};
+use std::io::BufRead;
+use std::marker::PhantomData;
 
 use futures::stream::iter_result;
 use futures::{Future, Sink, Stream};
@@ -114,9 +116,23 @@ What do you want to do?
     }
 }
 
-struct Dispatch(Box<Event<()>>);
+struct Dispatch<E, Err>(E, PhantomData<Err>);
 
-impl Effect for Dispatch
+
+impl<E, Err> Dispatch<E, Err>
+where E: 'static + Event<Err>,
+      Err: 'static,
+{
+    pub fn new(event: E) -> Dispatch<E, Err> {
+        Dispatch(event, PhantomData)
+    }
+
+    pub fn dispatch(self, dispatcher: EventDispatcher<Err>) -> impl Future<Item = Context<Err>> {
+        dispatcher.dispatch(self.0)
+    }
+}
+
+impl<E, Err> Effect for Dispatch<E, Err>
 {
     fn action(self: Box<Self>) {
         // I need a mutable handle to the App object in order to
@@ -128,16 +144,15 @@ struct Input(String);
 
 impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        let event = {
+        {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             match db.borrow().mode {
-                Mode::Menu => Box::new(MenuInput(self.0.clone())) as Box<Event<()>>,
-                Mode::Adding => Box::new(AddTodo(self.0.clone())) as Box<Event<()>>,
-                Mode::Removing => Box::new(RemoveTodo(self.0.clone())) as Box<Event<()>>,
-                Mode::Marking => Box::new(MarkDone(self.0.clone())) as Box<Event<()>>,
+                Mode::Menu     => context.effects.push(Box::new(Dispatch::new(MenuInput(self.0)))),
+                Mode::Adding   => context.effects.push(Box::new(Dispatch::new(AddTodo(self.0)))),
+                Mode::Removing => context.effects.push(Box::new(Dispatch::new(RemoveTodo(self.0)))),
+                Mode::Marking  => context.effects.push(Box::new(Dispatch::new(MarkDone(self.0)))),
             }
-        };
-        context.push_effect(Dispatch(event));
+        }
         context.next()
     }
 }
