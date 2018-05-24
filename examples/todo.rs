@@ -127,7 +127,7 @@ What do you want to do?
     }
 }
 
-struct Input(String);
+struct Input(pub String);
 
 impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
@@ -141,7 +141,7 @@ impl Event<()> for Input {
                 match db.borrow().mode {
                     Mode::Menu     => {
                         let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(MenuInput(input)))
+                            Box::new(EventInterceptor::new(MenuInput))
                         ];
                         context.queue.extend(interceptors);
                     },
@@ -170,26 +170,29 @@ impl Event<()> for Input {
                 context.effects.push(dispatcher.dispatch(ShowMenu));
             }
         }
+        let input = *self;
+        context.coeffects.insert(input);
         context.next()
     }
 }
 
-struct MenuInput(String);
+struct MenuInput;
 
 impl Event<()> for MenuInput {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
-        let next_mode = match self.0.as_ref() {
-            "1" => {
-                let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
-                context.effects.push(dispatcher.dispatch(ShowTodos));
-                Mode::Menu
-            },
-            "2" => Mode::Adding,
-            "3" => Mode::Marking,
-            "4" => Mode::Removing,
-            _ => Mode::Menu,
-        };
         {
+            let input = context.coeffects.get::<Input>().unwrap();
+            let next_mode = match input.0.as_ref() {
+                "1" => {
+                    let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
+                    context.effects.push(dispatcher.dispatch(ShowTodos));
+                    Mode::Menu
+                },
+                "2" => Mode::Adding,
+                "3" => Mode::Marking,
+                "4" => Mode::Removing,
+                _ => Mode::Menu,
+            };
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
             context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = next_mode)));
         }
