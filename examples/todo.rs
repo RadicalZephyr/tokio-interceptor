@@ -4,6 +4,7 @@ extern crate tokio_interceptor;
 
 
 use std::{io, thread};
+use std::rc::Rc;
 use std::io::BufRead;
 
 use futures::stream::iter_result;
@@ -121,11 +122,12 @@ impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            let dispatcher = context.coeffects.get::<Rc<EventDispatcher<()>>>().unwrap();
             match db.borrow().mode {
-                Mode::Menu     => context.effects.push(Box::new(Dispatch::new(MenuInput(self.0)))),
-                Mode::Adding   => context.effects.push(Box::new(Dispatch::new(AddTodo(self.0)))),
-                Mode::Removing => context.effects.push(Box::new(Dispatch::new(RemoveTodo(self.0)))),
-                Mode::Marking  => context.effects.push(Box::new(Dispatch::new(MarkDone(self.0)))),
+                Mode::Menu     => context.effects.push(Box::new(Dispatch::new(MenuInput(self.0),  Rc::clone(dispatcher)))),
+                Mode::Adding   => context.effects.push(Box::new(Dispatch::new(AddTodo(self.0),    Rc::clone(dispatcher)))),
+                Mode::Removing => context.effects.push(Box::new(Dispatch::new(RemoveTodo(self.0), Rc::clone(dispatcher)))),
+                Mode::Marking  => context.effects.push(Box::new(Dispatch::new(MarkDone(self.0),   Rc::clone(dispatcher)))),
             }
         }
         context.next()
