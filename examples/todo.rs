@@ -147,7 +147,7 @@ impl Event<()> for Input {
                     },
                     Mode::Adding   => {
                         let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                            Box::new(EventInterceptor::new(AddTodo(input)))
+                            Box::new(EventInterceptor::new(AddTodo))
                         ];
                         context.queue.extend(interceptors);
                     },
@@ -220,13 +220,14 @@ impl Event<()> for ShowTodos {
     }
 }
 
-struct AddTodo(String);
+struct AddTodo;
 
 impl Event<()> for AddTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
+            let input = context.coeffects.remove::<Input>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(self.0))));
+            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(input))));
         }
         context.next()
     }
