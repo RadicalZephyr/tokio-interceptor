@@ -89,11 +89,15 @@ enum Mode {
 
 struct AppState {
     mode: Mode,
+    todos: Vec<String>,
 }
 
 impl Default for AppState {
     fn default() -> AppState {
-        AppState { mode: Mode::Menu }
+        AppState {
+            mode: Mode::Menu,
+            todos: vec![],
+        }
     }
 }
 
