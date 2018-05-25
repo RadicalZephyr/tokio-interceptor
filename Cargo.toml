@@ -2,6 +2,14 @@
 name = "tokio-interceptor"
 version = "0.1.0"
 authors = ["Geoff Shannon <geoffpshannon@gmail.com>"]
+description = """
+An event-driven application framework built on tokio and futures.
+"""
+documentation = "https://docs.rs/tokio-interceptor"
+repository = "https://github.com/RadicalZephyr/tokio-interceptor"
+categories = ["asynchronous"]
+license = "LGPL-3.0"
+readme = "README.md"
 
 [dependencies]
 anymap = "0.12"
