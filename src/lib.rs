@@ -11,6 +11,9 @@ use std::rc::Rc;
 use anymap::AnyMap;
 use futures::{future,Async,Future};
 
+mod app;
+pub use app::App;
+
 mod coeffects;
 pub use coeffects::{Coeffect,NewCoeffect,InjectCoeffect};
 
