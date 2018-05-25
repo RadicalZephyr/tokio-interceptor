@@ -152,6 +152,7 @@ impl Event<()> for Input {
                 Mode::Removing => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
                         Box::new(EmptyInputHandler(Mode::Menu)),
+                        Box::new(ParseIndex),
                         Box::new(EventInterceptor::new(RemoveTodo))
                     ];
                     context.queue.extend(interceptors);
@@ -159,6 +160,7 @@ impl Event<()> for Input {
                 Mode::Marking  => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
                         Box::new(EmptyInputHandler(Mode::Menu)),
+                        Box::new(ParseIndex),
                         Box::new(EventInterceptor::new(MarkDone))
                     ];
                     context.queue.extend(interceptors);
@@ -194,6 +196,33 @@ impl Interceptor for EmptyInputHandler {
             }
         };
 
+        context.next()
+    }
+}
+
+struct Index(Result<usize, RemoveError<std::num::ParseIntError>>);
+
+struct ParseIndex;
+
+impl Interceptor for ParseIndex {
+    type Error = ();
+
+    fn before(&self, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        let max = {
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            db.borrow().todos.len()
+        };
+        let index_res = context.coeffects.remove::<NonEmptyInput>().unwrap()
+            .0.parse::<isize>()
+            .map_err(RemoveError::ParseError)
+            .and_then(|index| {
+                if index >= 0 && (index as usize) < max {
+                    Ok(index as usize)
+                } else {
+                    Err(RemoveError::OutOfRange(index))
+                }
+            });
+        context.coeffects.insert(Index(index_res));
         context.next()
     }
 }
@@ -266,18 +295,8 @@ enum RemoveError<E> {
 impl Event<()> for RemoveTodo {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
         {
-            let input = context.coeffects.remove::<NonEmptyInput>().unwrap().0;
+            let index_res = context.coeffects.remove::<Index>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            let max = db.borrow().todos.len();
-            let index_res = input.parse::<isize>()
-                .map_err(RemoveError::ParseError)
-                .and_then(|index| {
-                    if index >= 0 && (index as usize) < max {
-                        Ok(index as usize)
-                    } else {
-                        Err(RemoveError::OutOfRange(index))
-                    }
-                });
             match index_res {
                 Ok(index) => {
                     context.effects.push(Box::new(db.mutate(move |state: &mut AppState| {
@@ -288,7 +307,6 @@ impl Event<()> for RemoveTodo {
                     context.effects.push(Box::new(Print(format!("Error removing: {:?}", e))))
                 },
             };
-
         }
         context.next()
     }
