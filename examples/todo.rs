@@ -90,7 +90,7 @@ enum Mode {
 
 struct AppState {
     mode: Mode,
-    todos: Vec<String>,
+    todos: Vec<(bool, String)>,
 }
 
 impl Default for AppState {
@@ -119,7 +119,7 @@ impl Event<()> for ShowMenu {
 What do you want to do?
 1 - Display tasks
 2 - Add a new task
-3 - Mark a task as done
+3 - Change task "done" status
 4 - Remove a task
 ---
 "#);
@@ -161,7 +161,7 @@ impl Event<()> for Input {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
                         Box::new(EmptyInputHandler(Mode::Menu)),
                         Box::new(ParseIndex),
-                        Box::new(EventInterceptor::new(MarkDone))
+                        Box::new(EventInterceptor::new(ToggleMark))
                     ];
                     context.queue.extend(interceptors);
                 },
@@ -263,7 +263,8 @@ impl Event<()> for ShowTodos {
                 context.effects.push(Box::new(Print("  Nothing to do.".to_string())));
             }
             for (i, todo) in todos.iter().enumerate() {
-                context.effects.push(Box::new(Print(format!("  - {}: [{}] {}", i, " ", todo))));
+                let status = if todo.0 { "✔" } else { " " };
+                context.effects.push(Box::new(Print(format!("  - {}: [{}] {}", i, status, todo.1))));
             }
             context.effects.push(Box::new(Print("".to_string())));
         }
@@ -278,7 +279,7 @@ impl Event<()> for AddTodo {
         {
             let input = context.coeffects.remove::<NonEmptyInput>().unwrap().0;
             let db = context.coeffects.get::<Db<AppState>>().unwrap();
-            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push(input))));
+            context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.todos.push((false, input)))));
         }
         context.next()
     }
@@ -312,10 +313,25 @@ impl Event<()> for RemoveTodo {
     }
 }
 
-struct MarkDone;
+struct ToggleMark;
 
-impl Event<()> for MarkDone {
-    fn handle(self: Box<Self>, context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+impl Event<()> for ToggleMark {
+    fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        {
+            let index_res = context.coeffects.remove::<Index>().unwrap().0;
+            let db = context.coeffects.get::<Db<AppState>>().unwrap();
+            match index_res {
+                Ok(index) => {
+                    context.effects.push(Box::new(db.mutate(move |state: &mut AppState| {
+                        let todo = state.todos.get_mut(index).unwrap();
+                        todo.0 = ! todo.0;
+                    })));
+                },
+                Err(e) => {
+                    context.effects.push(Box::new(Print(format!("Error marking: {:?}", e))))
+                },
+            };
+        }
         context.next()
     }
 }
