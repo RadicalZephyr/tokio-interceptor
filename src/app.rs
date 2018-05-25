@@ -40,7 +40,7 @@ where State: 'static + Default,
         match self.dispatcher.try_borrow_mut() {
             Ok(mut dispatcher) => dispatcher.register_event::<E>(i),
             Err(e) => {
-                println!("failed to register event: did not have unique access to EventDispatcher: {}", e);
+                warn!("failed to register event: did not have unique access to EventDispatcher: {}", e);
             },
         };
     }

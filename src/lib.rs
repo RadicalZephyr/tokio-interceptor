@@ -1,6 +1,8 @@
 extern crate anymap;
 #[macro_use]
 extern crate futures;
+#[macro_use]
+extern crate log;
 extern crate tokio_core;
 
 
@@ -138,6 +140,7 @@ impl Direction {
         }
     }
 
+    #[allow(dead_code)]
     fn is_backwards(&self) -> bool {
         match *self {
             Direction::Forwards => false,

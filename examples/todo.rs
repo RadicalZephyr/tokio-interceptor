@@ -82,7 +82,7 @@ What do you want to do?
     }
 }
 
-struct Input(pub String);
+struct Input(String);
 
 impl Event<()> for Input {
     fn handle(self: Box<Self>, mut context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
