@@ -9,7 +9,7 @@ use std::io::BufRead;
 use std::rc::Rc;
 
 use futures::stream::iter_result;
-use futures::{Future, Sink, Stream};
+use futures::{future, Future, Sink, Stream};
 use futures::sync::mpsc::{unbounded, SendError, UnboundedReceiver};
 use tokio_core::reactor::{Core, Handle};
 use tokio_interceptor::{Context, Db, Dispatcher, Effect,
@@ -83,8 +83,9 @@ pub fn spawn_stdin_stream_unbounded() -> UnboundedReceiver<String> {
     channel_stream
 }
 
+#[derive(Copy, Clone, Debug)]
 enum Mode {
-    Adding, Removing, Marking, Menu
+    Adding, Removing, Marking, Menu, Quitting,
 }
 
 struct AppState {
@@ -136,32 +137,33 @@ impl Event<()> for Input {
             match db.borrow().mode {
                 Mode::Menu     => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                        Box::new(EmptyInputHandler),
+                        Box::new(EmptyInputHandler(Mode::Quitting)),
                         Box::new(EventInterceptor::new(MenuInput))
                     ];
                     context.queue.extend(interceptors);
                 },
                 Mode::Adding   => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                        Box::new(EmptyInputHandler),
+                        Box::new(EmptyInputHandler(Mode::Menu)),
                         Box::new(EventInterceptor::new(AddTodo))
                     ];
                     context.queue.extend(interceptors);
                 },
                 Mode::Removing => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                        Box::new(EmptyInputHandler),
+                        Box::new(EmptyInputHandler(Mode::Menu)),
                         Box::new(EventInterceptor::new(RemoveTodo))
                     ];
                     context.queue.extend(interceptors);
                 },
                 Mode::Marking  => {
                     let interceptors: Vec<Box<Interceptor<Error = ()>>> = vec![
-                        Box::new(EmptyInputHandler),
+                        Box::new(EmptyInputHandler(Mode::Menu)),
                         Box::new(EventInterceptor::new(MarkDone))
                     ];
                     context.queue.extend(interceptors);
                 },
+                Mode::Quitting => (),
             }
         }
         let input = *self;
@@ -172,7 +174,7 @@ impl Event<()> for Input {
 
 struct NonEmptyInput(String);
 
-struct EmptyInputHandler;
+struct EmptyInputHandler(Mode);
 
 impl Interceptor for EmptyInputHandler {
     type Error = ();
@@ -182,7 +184,8 @@ impl Interceptor for EmptyInputHandler {
             "" => {
                 context.queue.clear();
                 let db = context.coeffects.get::<Db<AppState>>().unwrap();
-                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = Mode::Menu)));
+                let mode = self.0;
+                context.effects.push(Box::new(db.mutate(move |state: &mut AppState| state.mode = mode)));
                 let dispatcher = context.coeffects.get::<Dispatcher<()>>().unwrap();
                 context.effects.push(dispatcher.dispatch(ShowMenu));
             },
@@ -317,6 +320,9 @@ impl Event<()> for ShowPrompt {
                 Mode::Marking => {
                     context.effects.push(dispatcher.dispatch(ShowTodos));
                 },
+                Mode::Quitting => {
+                    context.effects.push(dispatcher.dispatch(Quit(0)))
+                }
             }
         }
         context.next()
@@ -332,6 +338,14 @@ impl Interceptor for ShowPrompt {
             context.effects.push(dispatcher.dispatch(ShowPrompt));
         }
         context.next()
+    }
+}
+
+struct Quit(i64);
+
+impl Event<()> for Quit {
+    fn handle(self: Box<Self>, _context: Context<()>) -> Box<Future<Item = Context<()>, Error = ()>> {
+        Box::new(future::err(()))
     }
 }
 
