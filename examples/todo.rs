@@ -54,8 +54,8 @@ where State: 'static + Default,
         };
     }
 
-    pub fn dispatch<E: 'static + Event<()>>(&mut self, e: E) {
-        self.handle.spawn(self.dispatcher.borrow().dispatch(e).map(|_| ()).map_err(|_| ()));
+    pub fn dispatch<E: 'static + Event<()>>(&mut self, e: E) -> impl Future {
+        self.dispatcher.borrow().dispatch(e)
     }
 }
 
@@ -163,7 +163,7 @@ impl Event<()> for Input {
                     ];
                     context.queue.extend(interceptors);
                 },
-                Mode::Quitting => (),
+                Mode::Quitting => context.queue.push_back(Box::new(EventInterceptor::new(Quit(0))) as Box<Interceptor<Error = ()>>),
             }
         }
         let input = *self;
@@ -321,7 +321,7 @@ impl Event<()> for ShowPrompt {
                     context.effects.push(dispatcher.dispatch(ShowTodos));
                 },
                 Mode::Quitting => {
-                    context.effects.push(dispatcher.dispatch(Quit(0)))
+                    context.queue.push_back(Box::new(EventInterceptor::new(Quit(0))) as Box<Interceptor<Error = ()>>);
                 }
             }
         }
@@ -356,7 +356,7 @@ fn setup(app: &mut App<AppState>) {
     app.register_event_with::<Input>(vec![Box::new(ShowPrompt)]);
 }
 
-pub fn main() {
+pub fn main() -> Result<(), ()> {
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -364,11 +364,13 @@ pub fn main() {
     let mut app = App::new(handle);
     setup(&mut app);
 
-    app.dispatch(ShowMenu);
+    let handle = core.handle();
+    handle.spawn(app.dispatch(ShowMenu).map(|_| ()).map_err(|_| ()));
 
     let std_in_ch = spawn_stdin_stream_unbounded();
     core.run(std_in_ch.for_each(|m| {
-        app.dispatch(Input(m));
-        Ok(())
-    })).unwrap();
+        app.dispatch(Input(m)).map(|_| ()).map_err(|_| ())
+    }))?;
+
+    Ok(())
 }

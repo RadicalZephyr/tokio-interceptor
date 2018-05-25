@@ -7,8 +7,10 @@ use super::Interceptor;
 pub struct InterceptorQueue<E>(VecDeque<Rc<Box<Interceptor<Error = E>>>>);
 
 impl<E> InterceptorQueue<E> {
-    pub fn push_back(&mut self, value: Rc<Box<Interceptor<Error = E>>>) {
-        self.0.push_back(value);
+    pub fn push_back<T>(&mut self, value: T)
+    where T: Into<Rc<Box<Interceptor<Error = E>>>>,
+    {
+        self.0.push_back(value.into());
     }
 
     pub fn pop_front(&mut self) -> Option<Rc<Box<Interceptor<Error = E>>>> {
