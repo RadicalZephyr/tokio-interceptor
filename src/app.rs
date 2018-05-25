@@ -60,7 +60,7 @@ where State: 'static + Default,
         };
     }
 
-    pub fn dispatch<E: 'static + Event<()>>(&mut self, e: E) -> impl Future {
+    pub fn dispatch<E: 'static + Event<()>>(&self, e: E) -> impl Future {
         self.dispatcher.borrow().dispatch(e)
     }
 }
