@@ -21,7 +21,9 @@ use effects::MutateState;
 
 pub struct Db<State>(Rc<RefCell<State>>);
 
-impl<State> Db<State> {
+impl<State> Db<State>
+where State: Clone,
+{
     pub fn new(state: State) -> Db<State> {
         Db(Rc::new(RefCell::new(state)))
     }
@@ -32,6 +34,10 @@ impl<State> Db<State> {
 
     pub fn mutate<F>(&self, f: F) -> MutateState<State, F> {
         MutateState::new(Rc::clone(&self.0), f)
+    }
+
+    pub fn update(&self) -> State {
+        self.0.borrow().clone()
     }
 }
 
@@ -80,9 +86,9 @@ mod tests {
                 let db = context.coeffects.get::<Db<State>>().unwrap();
                 assert_eq!(self.initial, db.borrow().0);
                 let inc = self.inc;
-                context.effects.push(Box::new(db.mutate(move |state: &mut State| {
-                    state.0 += inc;
-                })));
+                let new_state = db.update();
+                new_state.0 += inc;
+                context.effects.push(Box::new(new_state));
             }
             Box::new(future::ok(context))
         }
@@ -95,11 +101,11 @@ mod tests {
         let db = Db::new(State(101));
         let i_state = InjectCoeffect::<Db<State>, ()>::new(db.clone());
         let i_effects: HandleEffects<()> = HandleEffects::new();
-        let i_event = event;
+        let i_event = EventInterceptor::new(event);
 
         let queue = vec![Box::new(i_state) as Box<Interceptor<Error = ()>>,
                          Box::new(i_effects) as Box<Interceptor<Error = ()>>,
-                         Box::new(EventInterceptor::new(i_event)) as Box<Interceptor<Error = ()>>];
+                         Box::new(i_event) as Box<Interceptor<Error = ()>>];
         let mut stack = vec![];
         for i in queue.into_iter() {
             context = i.before(context).wait().unwrap();

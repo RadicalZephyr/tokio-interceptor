@@ -29,7 +29,7 @@ pub struct App<State> {
 }
 
 impl<State> App<State>
-where State: 'static + Default,
+where State: 'static + Clone + Default,
 {
     pub fn new(handle: Handle) -> App<State> {
         App { handle,
